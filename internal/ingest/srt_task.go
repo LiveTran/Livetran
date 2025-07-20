@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/datarhei/gosrt"
+	"github.com/vijayvenkatj/LiveTran/internal/auth"
 	"github.com/vijayvenkatj/LiveTran/internal/config"
 	"github.com/vijayvenkatj/LiveTran/internal/upload"
 )
@@ -33,8 +34,14 @@ func SrtConnectionTask(ctx context.Context,task *Task) {
 	defer listener.Close()
 
 	ip := GetLocalIP()
-	url := fmt.Sprintf("srt://%s:%d?streamid=%s",ip,port,task.Id)
 
+	streamkey,err := auth.GenerateStreamKey(task.Id)
+	if err != nil {
+		task.UpdateStatus(StreamStopped,fmt.Sprintf("StreamKey error: %s",err))
+		return
+	}
+
+	url := fmt.Sprintf("srt://%s:%d?streamid=%s",ip,port,streamkey)
 	task.UpdateStatus(StreamReady,fmt.Sprintf("The stream is ready! URL -> %s",url))
 
 	accountId := config.GetEnv("R2_ACCOUNT_ID")
@@ -139,8 +146,11 @@ func WaitForConnection(ctx context.Context, listener srt.Listener, task *Task) (
 			return nil, res.err
 		}
 
-		if res.req.StreamId() != task.Id {
+		streamkey := res.req.StreamId()
+		ok,_ := auth.DecodeStreamKey(task.Id,streamkey)
+		if !ok {
 			res.req.Reject(srt.REJ_BADSECRET)
+			time.Sleep(300 * time.Millisecond)
 			return WaitForConnection(ctx, listener, task)
 		}
 
@@ -222,7 +232,6 @@ func ProcessStream(ctx context.Context,conn srt.Conn,task *Task,wg *sync.WaitGro
 		}
 	}
 }
-
 
 
 func GetLocalIP() string {

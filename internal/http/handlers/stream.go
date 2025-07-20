@@ -101,8 +101,8 @@ func (handler *Handler) Status(w http.ResponseWriter, r *http.Request) {
 }
 
 func (handler *Handler) GetVideoChunks(w http.ResponseWriter, r *http.Request) {
-	// TODO: Write a function to read and stream HLS Chunks from the output dir (Temp) using HTTP/2
-
+	// TODO: Implement LL-HLS 
+	
 	filePath := filepath.Join("output",r.URL.Path)
 	
 	file, err := os.Open(filePath)
