@@ -1,0 +1,35 @@
+syntax = "proto3";
+package stream;
+
+option go_package = "./api/generated/go/streampb;streampb";
+
+// TODO:
+/*  
+    Use GRPC for communications between the POD ( Transcoder ) and the main server
+    Use this for StatusUpdates, StreamStops, StreamMetrics, Health
+*/
+
+service StreamWorker {
+    rpc StopStream (NoParams) returns (StopResponse);
+    rpc Health (NoParams) returns (HealthResponse);
+    rpc Metrics (NoParams) returns (MetricResponse);
+    rpc StatusUpdates (NoParams) returns (stream StatusResponse);
+}
+
+message NoParams {}
+
+message StopResponse {
+    bool stopped = 1;
+    optional string error = 2;
+}
+
+message StatusResponse {
+    string status = 1;
+}
+
+message HealthResponse {
+    string health = 1;
+}
+message MetricResponse {
+    // TODO : Add needed metrics
+}
