@@ -26,7 +26,8 @@ func VerifyRequest(next http.Handler) http.Handler {
 			http.Error(w, "Error reading request body", http.StatusBadRequest)
 			return
 		}
-		// Reset r.Body for downstream handlers
+
+		// Reset r.Body for downstream handlers (Coz r.Body is a one time call)
 		r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 
 		secret := os.Getenv("HMAC_SECRET")
