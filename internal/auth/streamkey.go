@@ -10,59 +10,62 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-
-
-func GenerateStreamKey(streamId string) (token string,err error) {
+func GenerateStreamKey(streamId string) (token string, err error) {
 
 	claims := jwt.MapClaims{
 		"stream_id": streamId,
-		"exp": time.Now().Add(time.Hour * 2).Unix(),
+		"exp":       time.Now().Add(time.Hour * 2).Unix(),
 	}
 	unsigned_token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
-	secret := []byte(os.Getenv("JWT_SECRET"))
-	token,err = unsigned_token.SignedString(secret)
-	if err != nil {
-		return "",err
+	jwt_secret := os.Getenv("JWT_SECRET")
+	if jwt_secret == "" {
+		return "", fmt.Errorf("unable to verify the stream")
 	}
 
-	return fmt.Sprintf("mode=publish,rid=%s,token=%s",streamId,token),nil 
+	token, err = unsigned_token.SignedString(jwt_secret)
+	if err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf("mode=publish,rid=%s,token=%s", streamId, token), nil
 }
 
+func DecodeStreamKey(streamId string, streamkey string) (ok bool, data string) {
 
-func DecodeStreamKey(streamId string, streamkey string) (ok bool,data string) {
+	jwt_secret := os.Getenv("JWT_SECRET")
+	if jwt_secret == "" {
+		return false, "unable to verify the stream"
+	}
 
-	secret := []byte(os.Getenv("JWT_SECRET"))
-
-	values,err := parseStreamKey(streamkey)
+	values, err := parseStreamKey(streamkey)
 	if err != nil {
-		return false,err.Error()
+		return false, err.Error()
 	}
 
 	if values["rid"] != streamId {
-		return false,"Invalid StreamId"
+		return false, "Invalid StreamId"
 	}
 	if values["token"] == "" {
-		return false,"Invalid Token"
+		return false, "Invalid Token"
 	}
-	
 
 	token, err := jwt.Parse(values["token"], func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
-		return secret, nil
+		return jwt_secret, nil
 	})
 	if err != nil || !token.Valid {
 		if errors.Is(err, jwt.ErrTokenExpired) {
 			return false, "Token expired"
 		}
-		return false,"Invalid Token"
+		return false, "Invalid Token"
 	}
 
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
-		return false,"Invalid Claim Structure"
+		return false, "Invalid Claim Structure"
 	}
 
 	sid, ok := claims["stream_id"].(string)
@@ -75,7 +78,6 @@ func DecodeStreamKey(streamId string, streamkey string) (ok bool,data string) {
 	return true, sid
 
 }
-
 
 func parseStreamKey(streamkey string) (map[string]string, error) {
 	keys := strings.Split(streamkey, ",")
