@@ -3,10 +3,6 @@
 
 **LiveTran** is a self-hostable, high-performance live streaming media server written in Go. It's designed to ingest video streams via SRT (Secure Reliable Transport), transcode them in real-time to HLS (HTTP Live Streaming), and deliver them to viewers with low latency.
 
-[![Go Version](https://img.shields.io/github/go-mod/go-version/your-username/LiveTran)](https://go.dev)
-[![License](https://img.shields.io/github/license/your-username/LiveTran)](LICENSE)
-[![GitHub stars](https://img.shields.io/github/stars/your-username/LiveTran?style=social)](https://github.com/your-username/LiveTran/stargazers)
-
 ---
 
 ## ✨ Features
