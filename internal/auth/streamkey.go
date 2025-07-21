@@ -54,7 +54,7 @@ func DecodeStreamKey(streamId string, streamkey string) (ok bool, data string) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
-		return jwt_secret, nil
+		return []byte(jwt_secret), nil
 	})
 	if err != nil || !token.Valid {
 		if errors.Is(err, jwt.ErrTokenExpired) {
