@@ -28,7 +28,7 @@ func (h *Handler) StreamRoutes() http.Handler {
 	mux.HandleFunc("POST /stop-stream",h.StopStream)
 	mux.HandleFunc("POST /status", h.Status)
 
-	handler := middlewares.CORSMiddleware(mux)
+	handler := middlewares.CORSMiddleware(middlewares.VerifyRequest(mux))
 
 	return handler
 }
