@@ -23,7 +23,7 @@ func GenerateStreamKey(streamId string) (token string, err error) {
 		return "", fmt.Errorf("unable to verify the stream")
 	}
 
-	token, err = unsigned_token.SignedString(jwt_secret)
+	token, err = unsigned_token.SignedString([]byte(jwt_secret))
 	if err != nil {
 		return "", err
 	}
