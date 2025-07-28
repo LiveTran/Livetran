@@ -1,0 +1,18 @@
+---
+title: "Shipping it to the Cloud"
+description: "How your stream gets to your viewers."
+---
+
+## From Your Server to the World
+
+Okay, so FFmpeg is busy creating all your HLS files. Now what? We need to get them to your viewers, and that's where Cloudflare R2 comes in.
+
+### The R2 Uploader
+
+I've built a little helper that's dedicated to one job: getting your video files to R2 as fast as possible. It's configured to talk directly to your R2 bucket, so you don't have to worry about the details.
+
+<Callout intent="info">
+  **I'm Watching You, Files...**
+
+  The uploader uses a library called `fsnotify` to keep an eye on the output directory. The moment FFmpeg writes a new `.m3u8` or `.ts` file, the uploader sees it and immediately starts uploading it to R2. It's like having a little robot that's constantly making sure your stream is up-to-date for your viewers.
+</Callout> 

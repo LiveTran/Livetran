@@ -1,0 +1,57 @@
+---
+title: "API Reference"
+description: "Your guide to the Livetran REST API."
+---
+
+Hey! Here’s everything you need to know about the Livetran REST API. It’s designed to be simple and predictable.
+
+All endpoints are relative to your base URL and live under the `/api/` prefix. Remember to include your `LT-SIGNATURE` header for POST requests!
+
+---
+
+### POST `/start-stream`
+This endpoint kicks off a new stream. You'll need to provide a `stream_id` and optionally some webhook URLs to get status updates.
+
+<Card title="Example Request Body">
+```json
+{
+  "stream_id": "your-unique-stream-id",
+  "webhook_urls": [
+    "https://your-server.com/livetran-updates"
+  ]
+}
+```
+</Card>
+
+---
+
+### POST `/stop-stream`
+Use this to stop a stream that's currently in progress. All you need is the `stream_id`.
+
+<Card title="Example Request Body">
+```json
+{
+  "stream_id": "your-unique-stream-id"
+}
+```
+</Card>
+
+---
+
+### POST `/status`
+Want to check if a stream is live? Hit this endpoint with the `stream_id`.
+
+<Card title="Example Request Body">
+```json
+{
+  "stream_id": "your-unique-stream-id"
+}
+```
+</Card>
+
+---
+
+### GET `/video/{stream_id}/{file}`
+This isn't a typical REST endpoint, but it's how you'll get the actual video files. You can fetch the HLS playlist (`.m3u8`) and video segments (`.ts`) using this path.
+
+**Example URL:** `/video/your-unique-stream-id/playlist.m3u8` 

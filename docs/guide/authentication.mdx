@@ -1,0 +1,20 @@
+---
+title: "Keeping Things Secure"
+description: "How Livetran keeps your streams safe."
+---
+
+## Keeping Your Streams Private
+
+Security is a big deal, and I've built in a couple of layers to make sure your streams are only seen by the people you want them to be seen by.
+
+### Stream Keys (Your Secret Handshake)
+
+When you start a new stream, Livetran gives you a special stream key. Think of it like a secret password for your stream. It's actually a JSON Web Token (JWT) that has the `stream_id` and an expiration time baked into it.
+
+You'll need to include this key in your SRT connection URL. When your streaming software connects, Livetran checks the key to make sure it's valid and that it matches the stream you're trying to send.
+
+<Callout intent="info">
+  **Don't Forget to Sign Your Requests!**
+  
+  When you're talking to the REST API, you'll need to sign your requests with HMAC-SHA256. Just hash the request body with your secret key and stick it in the `LT-SIGNATURE` header. This makes sure that nobody can impersonate you and mess with your streams.
+</Callout> 
