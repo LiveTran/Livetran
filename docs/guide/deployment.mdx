@@ -1,0 +1,32 @@
+---
+title: "Deploying with Docker"
+description: "How to run Livetran in a Docker container."
+---
+
+## Running Livetran with Docker
+
+I've included a `Dockerfile` in the project to make it super easy to get Livetran up and running in a container. This is the recommended way to deploy the application in production.
+
+### Building the Image
+
+First, you'll need to build the Docker image. Open up a terminal in the project's root directory and run the following command:
+
+```bash
+docker build -t livetran .
+```
+
+This will create a new Docker image with the tag `livetran`.
+
+### Running the Container
+
+Once the image is built, you can start a container with this command:
+
+```bash
+docker run -d -p 8080:8080 --name livetran-server livetran
+```
+
+This will start the Livetran server in a detached container and map port 8080 on your host to port 8080 in the container.
+
+### A Note on `.env` and Keys
+
+The `Dockerfile` is set up to copy your `.env` file and the contents of the `keys` directory into the image. Make sure you have these set up correctly before building the image, especially for a production environment. 
