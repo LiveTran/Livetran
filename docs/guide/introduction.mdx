@@ -1,0 +1,27 @@
+---
+title: "How it All Works"
+description: "A look under the hood of Livetran."
+---
+
+## The Big Picture
+
+Alright, let's talk about how Livetran is put together. I designed it to be as simple as possible, so you can spend less time configuring and more time streaming.
+
+Here's a diagram that shows how everything flows from your camera to your viewers:
+
+<img
+  src="../arch.svg"
+  alt="Livetran Architecture"
+/>
+
+### A Step-by-Step Journey
+
+So, what's actually happening in that diagram? Let's break it down.
+
+1.  **You Kick Things Off**: It all starts with a simple API call from you. You hit the "start stream" endpoint, and the server gets to work, creating a new task and giving you back a special SRT URL with a stream key.
+2.  **The Stream Arrives**: Your streaming software (like OBS) uses that URL to send your video to Livetran. The stream key makes sure it's really you.
+3.  **The Magic of Transcoding**: As soon as the stream comes in, I hand it off to FFmpeg. This is where the magic happens. FFmpeg takes your raw stream and converts it into HLS, which is the format that's easy to serve up to web browsers.
+4.  **Off to the Cloud**: While FFmpeg is doing its thing, a little helper is watching for the new video files. As soon as they appear, it zips them up and sends them over to your Cloudflare R2 bucket.
+5.  **Showtime!**: Now, anyone with the link to your HLS playlist can watch your stream. Because the files are on R2, you don't have to worry about your server getting overloaded with viewers.
+
+And that's pretty much it! A simple, solid pipeline for your live streams. 

@@ -1,0 +1,24 @@
+---
+title: "Getting the Stream"
+description: "How Livetran handles your incoming video."
+---
+
+## The Journey of Your Stream
+
+So, you've hit the "Go Live" button in OBS. What happens next? Let's follow your stream as it makes its way into Livetran.
+
+### Listening for SRT
+
+I'm using the excellent `go-srt` library to listen for your SRT stream. When you create a new stream through the API, I fire up a new listener on a unique port and generate that special stream key we talked about.
+
+<Callout intent="info">
+  **The TaskManager: The Brains of the Operation**
+
+  Behind the scenes, there's a `TaskManager` that keeps track of everything. It's a simple in-memory store that holds all the info about your active streams. When you start or stop a stream, the `TaskManager` is the one that's pulling the strings and sending out webhooks to keep you in the loop.
+</Callout>
+
+### Handing Off to FFmpeg
+
+Once your stream is happily flowing in, I hand it off to the real MVP: FFmpeg. This is where your raw stream gets turned into the HLS format that's perfect for the web. I've configured it to be super fast, so your viewers will see what's happening almost instantly.
+
+FFmpeg creates the `.m3u8` playlist and all the little `.ts` video chunks that make up your stream. 

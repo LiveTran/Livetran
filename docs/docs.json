@@ -1,22 +1,44 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "name": "Livetran",
-  "favicon": "/favicon.svg",
   "theme": "maple",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#2563EB",
+    "light": "#60A5FA",
+    "dark": "#1E40AF"
   },
   "navigation": {
-    "group": "Getting Started",
-    "pages": [
-      "index"
+    "groups": [
+      {
+        "group": "Getting Started",
+        "icon": "play",
+        "pages": [
+          "index"
+        ]
+      },
+      {
+        "group": "Guide",
+        "icon": "book-open",
+        "pages": [
+          "guide/introduction",
+          "guide/authentication",
+          "guide/ingestion",
+          "guide/uploading"
+        ]
+      },
+      {
+        "group": "API Reference",
+        "icon": "code",
+        "pages": [
+          "api-reference"
+        ]
+      }
     ]
   },
   "footer": {
     "socials": {
       "github": "https://github.com/Livetran/livetran"
-    }
+    },
+    "message": "© 2025 Livetran Inc. All rights reserved."
   }
 }
