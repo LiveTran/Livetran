@@ -23,7 +23,8 @@
           "guide/introduction",
           "guide/authentication",
           "guide/ingestion",
-          "guide/uploading"
+          "guide/uploading",
+          "guide/deployment"
         ]
       },
       {
