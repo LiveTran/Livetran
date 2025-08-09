@@ -169,29 +169,32 @@ func ProcessStream(ctx context.Context, conn srt.Conn, task *Task, wg *sync.Wait
 
 	cmd := exec.Command("ffmpeg",
 		"-f", "mpegts",
+		"-fflags", "+nobuffer",
+		"-flags", "low_delay",
+		"-max_delay", "0",
 		"-i", "pipe:0",
 
-		// Video encoding (H.264)
 		"-c:v", "libx264",
 		"-preset", "ultrafast",
 		"-tune", "zerolatency",
-		"-crf", "26", // quality level (lower is better, 18–28 is sane)
+		"-crf", "23",
+		"-g", "30",
+		"-keyint_min", "30",
 
-		// Audio encoding (AAC)
 		"-c:a", "aac",
 		"-b:a", "128k",
 
-		// HLS segmenting
 		"-f", "hls",
-		"-hls_time", "3",
-		"-hls_list_size", "0",
-		"-hls_flags", "append_list+independent_segments",
+		"-hls_time", "1",               // segment duration 1 second
+		"-hls_list_size", "6",          // number of segments in playlist
+		"-hls_flags", "delete_segments+append_list+split_by_time",
 		"-hls_segment_type", "mpegts",
+		"-hls_allow_cache", "0",
 		"-hls_segment_filename", fmt.Sprintf("output/%s-%%03d.ts", task.Id),
 
-		// Final playlist file
 		fmt.Sprintf("output/%s.m3u8", task.Id),
 	)
+
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
