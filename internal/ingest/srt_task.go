@@ -185,15 +185,17 @@ func ProcessStream(ctx context.Context, conn srt.Conn, task *Task, wg *sync.Wait
 		"-b:a", "128k",
 
 		"-f", "hls",
-		"-hls_time", "1",               // segment duration 1 second
-		"-hls_list_size", "6",          // number of segments in playlist
-		"-hls_flags", "delete_segments+append_list+split_by_time",
+		"-lhls", "1",  // Enable LHLS (use "1" for true/enabled)
+		"-hls_time", "1",          // Segment duration: 1s for low latency
+		"-hls_list_size", "0",     // Unlimited playlist size for live streams
+		"-hls_flags", "append_list+split_by_time",
 		"-hls_segment_type", "mpegts",
 		"-hls_allow_cache", "0",
 		"-hls_segment_filename", fmt.Sprintf("output/%s-%%03d.ts", task.Id),
 
 		fmt.Sprintf("output/%s.m3u8", task.Id),
 	)
+
 
 
 	stdin, err := cmd.StdinPipe()
