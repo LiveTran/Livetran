@@ -20,6 +20,7 @@ type Task struct {
 	Id 			string
 	Status		string
 	Webhooks 	[]string
+	Abr			bool
 	CancelFn	context.CancelCauseFunc
 	UpdatesChan	chan UpdateResponse
 }
@@ -57,7 +58,7 @@ func (task *Task) UpdateStatus(status string, update string) {
 
 
 // Starting a Task 
-func (tm *TaskManager) StartTask(id string,webhooks []string) {
+func (tm *TaskManager) StartTask(id string,webhooks []string, abr bool) {
 	tm.mu.Lock()
 	if _, exists := tm.TaskMap[id]; exists {
 		tm.mu.Unlock()
@@ -71,6 +72,7 @@ func (tm *TaskManager) StartTask(id string,webhooks []string) {
 		CancelFn:    cancelFunc,
 		Status:      StreamInit,
 		Webhooks: 	 webhooks,
+		Abr:		 abr || false,
 		UpdatesChan: make(chan UpdateResponse, 4),
 	}
 	tm.TaskMap[id] = task
