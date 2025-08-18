@@ -3,6 +3,7 @@ package api
 import (
 	"crypto/tls"
 	"fmt"
+	"log/slog"
 	"net/http"
 
 	"github.com/vijayvenkatj/LiveTran/internal/http/handlers"
@@ -35,7 +36,7 @@ func (a *APIServer) StartAPIServer(tm *ingest.TaskManager) error {
 	router.Handle("/api/",http.StripPrefix("/api",streamRoutes))
 	router.Handle("/video/",http.StripPrefix("/video",videoRoutes))
 
-	fmt.Println("Server is listening on port",a.address)
+	slog.Info(fmt.Sprintf("Server is listening on port %s",a.address))
 
 	server := &http.Server{
 		Addr:    a.address,

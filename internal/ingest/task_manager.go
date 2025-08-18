@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"sync"
 )
@@ -62,7 +62,7 @@ func (tm *TaskManager) StartTask(id string,webhooks []string, abr bool) {
 	tm.mu.Lock()
 	if _, exists := tm.TaskMap[id]; exists {
 		tm.mu.Unlock()
-		fmt.Println("Job exists!")
+		slog.Error("Job Exists!");
 		return 
 	}
 
@@ -82,18 +82,18 @@ func (tm *TaskManager) StartTask(id string,webhooks []string, abr bool) {
 	go func(updates <-chan UpdateResponse) {
 		for update := range updates {
 
-			fmt.Println(update.Update)
-	
+			slog.Info(update.Update)
+
 			jsonData, err := json.Marshal(update)
 			if err != nil {
-				fmt.Println("Failed to send webhook:", err)
+				slog.Error("Failed to send webhook", "error", err);
 				continue
 			}
 
 			for _,webhook := range task.Webhooks {
 				resp,err := http.Post(webhook,"application/json",bytes.NewBuffer(jsonData))
 				if err != nil {
-					fmt.Println("Failed to send webhook:", err)
+					slog.Error("Failed to send webhook", "error", err);
 					continue
 				}
 				_, _ = io.Copy(io.Discard, resp.Body)
@@ -119,7 +119,7 @@ func (tm *TaskManager) StopTask(id string,reason error) {
 	if task, exists := tm.TaskMap[id]; exists {
 		task.CancelFn(reason)
 	} else {
-		fmt.Println("Job already done / Cancelled")
+		slog.Error("Job already done / Cancelled");
 	}
 
 }
