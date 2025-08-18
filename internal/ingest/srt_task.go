@@ -168,7 +168,7 @@ func WaitForConnection(ctx context.Context, listener srt.Listener, task *Task) (
 func ProcessStream(ctx context.Context, conn srt.Conn, task *Task, wg *sync.WaitGroup) error {
 
 	var cmd *exec.Cmd
-	if task.Abr == true {
+	if task.Abr {
 		cmd = exec.Command("ffmpeg",
 			"-f", "mpegts",
 			"-fflags", "+nobuffer",
@@ -185,31 +185,24 @@ func ProcessStream(ctx context.Context, conn srt.Conn, task *Task, wg *sync.Wait
 			"-keyint_min", "30",
 			"-c:a", "aac",
 
-			// HLS / LHLS options
+			// Per-variant settings
+			"-map", "0:v:0", "-map", "0:a:0", "-b:v:0", "5000k", "-s:v:0", "1920x1080", "-b:a:0", "128k",
+			"-map", "0:v:0", "-map", "0:a:0", "-b:v:1", "3000k", "-s:v:1", "1280x720", "-b:a:1", "96k",
+			"-map", "0:v:0", "-map", "0:a:0", "-b:v:2", "1500k", "-s:v:2", "854x480", "-b:a:2", "64k",
+
+			// HLS / LL-HLS options
 			"-f", "hls",
-			"-lhls", "1", // Enable Low-Latency HLS
 			"-hls_time", "1", // 1 second segments for LL
 			"-hls_list_size", "0",
 			"-hls_flags", "append_list+independent_segments+delete_segments",
 			"-hls_segment_type", "mpegts",
-			"-hls_allow_cache", "0",
+			"-hls_allow_cache", "1",
 
-			// Generate ABR playlists and master
-			"-var_stream_map", "v:0,a:0 v:0,a:0 v:0,a:0", // 3 variants from same input
+			// Multi-bitrate outputs
+			"-var_stream_map", "v:0,a:0 v:1,a:1 v:2,a:2",
 			"-master_pl_name", fmt.Sprintf("%s_master.m3u8", task.Id),
-
-			// Output patterns for each rendition
-			"-b:v:0", "5000k", "-s:v:0", "1920x1080", "-b:a:0", "128k",
-			"-hls_segment_filename", fmt.Sprintf("output/%s_1080p-%%03d.ts", task.Id),
-			fmt.Sprintf("output/%s_1080p.m3u8", task.Id),
-
-			"-b:v:1", "3000k", "-s:v:1", "1280x720", "-b:a:1", "96k",
-			"-hls_segment_filename", fmt.Sprintf("output/%s_720p-%%03d.ts", task.Id),
-			fmt.Sprintf("output/%s_720p.m3u8", task.Id),
-
-			"-b:v:2", "1500k", "-s:v:2", "854x480", "-b:a:2", "64k",
-			"-hls_segment_filename", fmt.Sprintf("output/%s_480p-%%03d.ts", task.Id),
-			fmt.Sprintf("output/%s_480p.m3u8", task.Id),
+			"-hls_segment_filename", fmt.Sprintf("output/%s_%%v-%%03d.ts", task.Id),
+			fmt.Sprintf("output/%s_%%v.m3u8", task.Id),
 		)
 	} else {
 		cmd = exec.Command("ffmpeg",
@@ -230,12 +223,11 @@ func ProcessStream(ctx context.Context, conn srt.Conn, task *Task, wg *sync.Wait
 			"-b:a", "128k",
 
 			"-f", "hls",
-			"-lhls", "1",  // Enable LHLS (use "1" for true/enabled)
 			"-hls_time", "1",          // Segment duration: 1s for low latency
 			"-hls_list_size", "0",     // Unlimited playlist size for live streams
 			"-hls_flags", "append_list+independent_segments+delete_segments",
 			"-hls_segment_type", "mpegts",
-			"-hls_allow_cache", "0",
+			"-hls_allow_cache", "1",
 			"-hls_segment_filename", fmt.Sprintf("output/%s-%%03d.ts", task.Id),
 
 			fmt.Sprintf("output/%s.m3u8", task.Id),

@@ -109,7 +109,7 @@ This project is developed in phases. Here’s a look at what’s done and what�
 
 - [ ] LL-HLS output for ultra-low latency
 - [ ] WebRTC ingest support
-- [ ] Multi-bitrate HLS transcoding (1080p, 720p, 480p)
+- [x] Multi-bitrate HLS transcoding (1080p, 720p, 480p)
 - [ ] Kubernetes manifests and auto-scaling
 - [ ] Cloudflare CDN integration with signed playback URLs
 - [ ] Real-time analytics with Prometheus/Grafana
