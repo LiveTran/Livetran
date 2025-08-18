@@ -17,7 +17,8 @@ type Response struct {
 
 type StreamRequest struct {
 	StreamId	string	    `json:"stream_id"`
-	WebhookUrls  []string 	`json:"webhook_urls,omitempty"`
+	WebhookUrls []string 	`json:"webhook_urls,omitempty"`
+	Abr			bool		`json:"abr,omitempty"`
 }
 
 
@@ -36,8 +37,8 @@ func (handler *Handler) StartStream(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-
-	handler.tm.StartTask(streamBody.StreamId,streamBody.WebhookUrls)
+	
+	handler.tm.StartTask(streamBody.StreamId,streamBody.WebhookUrls,streamBody.Abr)
 	
 	json.NewEncoder(w).Encode(Response{
 		Success: true,

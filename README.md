@@ -102,14 +102,14 @@ This project is developed in phases. Here’s a look at what’s done and what�
 - [x] SRT ingest endpoint
 - [x] JWT-secured stream key generation
 - [x] REST/gRPC API for stream management
-- [ ] Basic user authentication and metadata storage
-- [ ] Dockerfiles for all services
+- [x] Basic user authentication and metadata storage
+- [x] Dockerfiles for all services
 
 ### **Phase 2: Optimization & Scalability (In Progress)** 🚧
 
 - [ ] LL-HLS output for ultra-low latency
 - [ ] WebRTC ingest support
-- [ ] Multi-bitrate HLS transcoding (1080p, 720p, 480p)
+- [x] Multi-bitrate HLS transcoding (1080p, 720p, 480p)
 - [ ] Kubernetes manifests and auto-scaling
 - [ ] Cloudflare CDN integration with signed playback URLs
 - [ ] Real-time analytics with Prometheus/Grafana

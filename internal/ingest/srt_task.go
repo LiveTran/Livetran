@@ -167,31 +167,72 @@ func WaitForConnection(ctx context.Context, listener srt.Listener, task *Task) (
 
 func ProcessStream(ctx context.Context, conn srt.Conn, task *Task, wg *sync.WaitGroup) error {
 
-	cmd := exec.Command("ffmpeg",
-		"-f", "mpegts",
-		"-i", "pipe:0",
+	var cmd *exec.Cmd
+	if task.Abr {
+		cmd = exec.Command("ffmpeg",
+			"-f", "mpegts",
+			"-fflags", "+nobuffer",
+			"-flags", "low_delay",
+			"-max_delay", "0",
+			"-i", "pipe:0",
 
-		// Video encoding (H.264)
-		"-c:v", "libx264",
-		"-preset", "ultrafast",
-		"-tune", "zerolatency",
-		"-crf", "26", // quality level (lower is better, 18–28 is sane)
+			// Common encoder settings
+			"-c:v", "libx264",
+			"-preset", "ultrafast",
+			"-tune", "zerolatency",
+			"-crf", "23",
+			"-g", "30",
+			"-keyint_min", "30",
+			"-c:a", "aac",
 
-		// Audio encoding (AAC)
-		"-c:a", "aac",
-		"-b:a", "128k",
+			// Per-variant settings
+			"-map", "0:v:0", "-map", "0:a:0", "-b:v:0", "5000k", "-s:v:0", "1920x1080", "-b:a:0", "128k",
+			"-map", "0:v:0", "-map", "0:a:0", "-b:v:1", "3000k", "-s:v:1", "1280x720", "-b:a:1", "96k",
+			"-map", "0:v:0", "-map", "0:a:0", "-b:v:2", "1500k", "-s:v:2", "854x480", "-b:a:2", "64k",
 
-		// HLS segmenting
-		"-f", "hls",
-		"-hls_time", "3",
-		"-hls_list_size", "0",
-		"-hls_flags", "append_list+independent_segments",
-		"-hls_segment_type", "mpegts",
-		"-hls_segment_filename", fmt.Sprintf("output/%s-%%03d.ts", task.Id),
+			// HLS / LL-HLS options
+			"-f", "hls",
+			"-hls_time", "1", // 1 second segments for LL
+			"-hls_list_size", "0",
+			"-hls_flags", "append_list+independent_segments+delete_segments",
+			"-hls_segment_type", "mpegts",
+			"-hls_allow_cache", "1",
 
-		// Final playlist file
-		fmt.Sprintf("output/%s.m3u8", task.Id),
-	)
+			// Multi-bitrate outputs
+			"-var_stream_map", "v:0,a:0 v:1,a:1 v:2,a:2",
+			"-master_pl_name", fmt.Sprintf("%s_master.m3u8", task.Id),
+			"-hls_segment_filename", fmt.Sprintf("output/%s_%%v-%%03d.ts", task.Id),
+			fmt.Sprintf("output/%s_%%v.m3u8", task.Id),
+		)
+	} else {
+		cmd = exec.Command("ffmpeg",
+			"-f", "mpegts",
+			"-fflags", "+nobuffer",
+			"-flags", "low_delay",
+			"-max_delay", "0",
+			"-i", "pipe:0",
+
+			"-c:v", "libx264",
+			"-preset", "ultrafast",
+			"-tune", "zerolatency",
+			"-crf", "23",
+			"-g", "30",
+			"-keyint_min", "30",
+
+			"-c:a", "aac",
+			"-b:a", "128k",
+
+			"-f", "hls",
+			"-hls_time", "1",          // Segment duration: 1s for low latency
+			"-hls_list_size", "0",     // Unlimited playlist size for live streams
+			"-hls_flags", "append_list+independent_segments+delete_segments",
+			"-hls_segment_type", "mpegts",
+			"-hls_allow_cache", "1",
+			"-hls_segment_filename", fmt.Sprintf("output/%s-%%03d.ts", task.Id),
+
+			fmt.Sprintf("output/%s.m3u8", task.Id),
+		)
+	}
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -215,7 +256,7 @@ func ProcessStream(ctx context.Context, conn srt.Conn, task *Task, wg *sync.Wait
 		cmd.Wait()
 	}()
 
-	buf := make([]byte, 1316)
+	buf := make([]byte, 8*1316)
 
 	for {
 		n, err := conn.Read(buf)
