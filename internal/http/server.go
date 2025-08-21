@@ -11,9 +11,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/vijayvenkatj/LiveTran/internal/config"
 	"github.com/vijayvenkatj/LiveTran/internal/http/handlers"
 	"github.com/vijayvenkatj/LiveTran/internal/ingest"
+	"github.com/vijayvenkatj/LiveTran/metrics"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
@@ -37,7 +37,7 @@ func (a *APIServer) StartAPIServer(tm *ingest.TaskManager) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	mp, err := config.InitMeterProvider(ctx)
+	mp, err := metrics.InitMeterProvider(ctx)
 	if err != nil {
 		return fmt.Errorf("init metrics: %w", err)
 	}
@@ -46,6 +46,13 @@ func (a *APIServer) StartAPIServer(tm *ingest.TaskManager) error {
 		defer cancel()
 		_ = mp.Shutdown(shCtx)
 	}()
+
+	meter := mp.Meter("live-streaming-api");
+
+
+	metrics.RegisterGauge(ctx,meter,"active_streams","no of active streams", func () int64 {
+		return tm.GetActiveStreams()
+	})
 
 	routeHandler := handlers.NewHandler(tm)
 
@@ -74,7 +81,7 @@ func (a *APIServer) StartAPIServer(tm *ingest.TaskManager) error {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := server.Shutdown(shutdownCtx); err != nil {
-			slog.Error("server shutdown error", "err", err)
+			slog.Error("server shutdown error", "Error", err)
 		}
 	}()
 

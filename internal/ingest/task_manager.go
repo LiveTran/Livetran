@@ -55,6 +55,20 @@ func (task *Task) UpdateStatus(status string, update string) {
 	}
 }
 
+func (task *TaskManager) GetActiveStreams() int64 {
+	task.mu.Lock()
+	defer task.mu.Unlock()
+
+	length := 0;
+	for _,task := range task.TaskMap {
+		if task.Status != StreamStopped {
+			length = length+1;
+		}
+	}
+
+	return int64(length);
+}
+
 
 
 // Starting a Task 
