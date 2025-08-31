@@ -2,15 +2,16 @@ package metrics
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/semconv/v1.26.0"
-	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 )
 
 func getenv(k, def string) string {
@@ -20,8 +21,19 @@ func getenv(k, def string) string {
 	return def
 }
 
-// initMeterProvider configures OTLP metrics export over HTTP.
+// isMetricsEnabled checks if metrics are enabled via environment variable
+func IsMetricsEnabled() bool {
+	return os.Getenv("ENABLE_METRICS") == "true"
+}
+
+// InitMeterProvider configures OTLP metrics export over HTTP.
+// Returns nil if metrics are disabled via ENABLE_METRICS=false
 func InitMeterProvider(ctx context.Context) (*metric.MeterProvider, error) {
+	// Check if metrics are enabled
+	if !IsMetricsEnabled() {
+		return nil, fmt.Errorf("metrics not enabled!")
+	}
+
 	endpoint := getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "localhost:4318")
 	insecure := getenv("OTEL_EXPORTER_OTLP_INSECURE", "true") == "true"
 
@@ -62,4 +74,12 @@ func InitMeterProvider(ctx context.Context) (*metric.MeterProvider, error) {
 
 	otel.SetMeterProvider(mp)
 	return mp, nil
+}
+
+// ShutdownMeterProvider gracefully shuts down the meter provider.
+func ShutdownMeterProvider(ctx context.Context, mp *metric.MeterProvider) error {
+	if mp != nil {
+		return mp.Shutdown(ctx)
+	}
+	return nil
 }

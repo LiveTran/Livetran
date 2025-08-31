@@ -15,6 +15,8 @@ import (
 	"github.com/vijayvenkatj/LiveTran/internal/ingest"
 	"github.com/vijayvenkatj/LiveTran/metrics"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 )
 
 
@@ -33,43 +35,58 @@ func NewAPIServer(address string) *APIServer {
 
 
 func (a *APIServer) StartAPIServer(tm *ingest.TaskManager) error {
-
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	mp, err := metrics.InitMeterProvider(ctx)
-	if err != nil {
-		return fmt.Errorf("init metrics: %w", err)
+	isMetricsEnabled := metrics.IsMetricsEnabled()
+
+	var mp metric.MeterProvider
+	var shutdownFunc func()
+
+	if isMetricsEnabled {
+		var err error
+		mp, err = metrics.InitMeterProvider(ctx)
+		if err != nil {
+			return fmt.Errorf("init metrics: %w", err)
+		}
+		// graceful shutdown for metrics
+		shutdownFunc = func() {
+			shCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := mp.(metric.MeterProvider).(interface{ Shutdown(context.Context) error }).Shutdown(shCtx); err != nil {
+				slog.Error("failed to shutdown metrics", "error", err)
+			}
+		}
+		defer shutdownFunc()
+
+		meter := mp.Meter("live-streaming-api")
+
+		metrics.RegisterUpDownCounter(ctx, meter, "active_streams", "no of active streams", func() (int64, []attribute.KeyValue) {
+			return tm.GetActiveStreams()
+		})
+		metrics.RegisterUpDownCounter(ctx, meter, "idle_streams", "no of idle streams or initialised", func() (int64, []attribute.KeyValue) {
+			return tm.GetIdleStreams()
+		})
 	}
-	defer func() { // ensure metrics are flushed on shutdown
-		shCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = mp.Shutdown(shCtx)
-	}()
-
-	meter := mp.Meter("live-streaming-api");
-
-
-	metrics.RegisterGauge(ctx,meter,"active_streams","no of active streams", func () int64 {
-		return tm.GetActiveStreams()
-	})
 
 	routeHandler := handlers.NewHandler(tm)
-
 	streamRoutes := routeHandler.StreamRoutes()
 	videoRoutes := routeHandler.VideoRoutes()
 
 	router := http.NewServeMux()
-	router.Handle("/api/",http.StripPrefix("/api",streamRoutes))
-	router.Handle("/video/",http.StripPrefix("/video",videoRoutes))
+	router.Handle("/api/", http.StripPrefix("/api", streamRoutes))
+	router.Handle("/video/", http.StripPrefix("/video", videoRoutes))
 
-	instrumented := otelhttp.NewHandler(router, "http.server",
-		otelhttp.WithMeterProvider(mp),
-	)
+	var handler http.Handler = router
+	if isMetricsEnabled {
+		handler = otelhttp.NewHandler(router, "http.server",
+			otelhttp.WithMeterProvider(mp),
+		)
+	}
 
 	server := &http.Server{
 		Addr:      a.address,
-		Handler:   instrumented,
+		Handler:   handler,
 		TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12},
 	}
 
