@@ -27,7 +27,7 @@ func RegisterStatusGauge(
 	}
 
 	_, err = meter.RegisterCallback(func(ctx context.Context, obs metric.Observer) error {
-		idle, active, stopped := callbackFn()
+		active, idle, stopped := callbackFn()
 
 		// Export each status with a "status" label
 		obs.ObserveInt64(gauge, idle, metric.WithAttributes(attribute.String("status", "idle")))
