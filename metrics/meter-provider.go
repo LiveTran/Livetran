@@ -29,6 +29,7 @@ func IsMetricsEnabled() bool {
 // Returns nil if metrics are disabled via ENABLE_METRICS=false
 func InitMeterProvider(ctx context.Context) (*metric.MeterProvider, error) {
 	// Check if metrics are enabled
+
 	if !IsMetricsEnabled() {
 		return nil, nil
 	}
