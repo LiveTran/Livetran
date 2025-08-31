@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"sync"
+	"time"
+
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type UpdateResponse struct {
@@ -23,6 +26,7 @@ type Task struct {
 	Abr			bool
 	CancelFn	context.CancelCauseFunc
 	UpdatesChan	chan UpdateResponse
+	StartTime	time.Time
 }
 
 const (
@@ -55,6 +59,37 @@ func (task *Task) UpdateStatus(status string, update string) {
 	}
 }
 
+func (tm *TaskManager) GetActiveStreams() (int64, []attribute.KeyValue) {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+
+	count := 0
+	var attrs []attribute.KeyValue
+
+	for _, task := range tm.TaskMap {
+		if task.Status != StreamStopped {
+			count++
+		}
+	}
+
+	return int64(count), attrs
+}
+
+func (tm *TaskManager) GetIdleStreams() (int64, []attribute.KeyValue) {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+
+	count := 0
+	var attrs []attribute.KeyValue
+
+	for _, task := range tm.TaskMap {
+		if task.Status == StreamReady || task.Status == StreamInit {
+			count++
+		}
+	}
+
+	return int64(count), attrs
+}
 
 
 // Starting a Task 
@@ -62,7 +97,7 @@ func (tm *TaskManager) StartTask(id string,webhooks []string, abr bool) {
 	tm.mu.Lock()
 	if _, exists := tm.TaskMap[id]; exists {
 		tm.mu.Unlock()
-		fmt.Println("Job exists!")
+		slog.Error("Job Exists!");
 		return 
 	}
 
@@ -74,6 +109,7 @@ func (tm *TaskManager) StartTask(id string,webhooks []string, abr bool) {
 		Webhooks: 	 webhooks,
 		Abr:		 abr || false,
 		UpdatesChan: make(chan UpdateResponse, 4),
+		StartTime:   time.Now(), 
 	}
 	tm.TaskMap[id] = task
 	tm.mu.Unlock()
@@ -82,22 +118,22 @@ func (tm *TaskManager) StartTask(id string,webhooks []string, abr bool) {
 	go func(updates <-chan UpdateResponse) {
 		for update := range updates {
 
-			fmt.Println(update.Update)
-	
+			slog.Info(update.Update)
+
 			jsonData, err := json.Marshal(update)
 			if err != nil {
-				fmt.Println("Failed to send webhook:", err)
+				slog.Error("Failed to send webhook", "error", err);
 				continue
 			}
 
 			for _,webhook := range task.Webhooks {
 				resp,err := http.Post(webhook,"application/json",bytes.NewBuffer(jsonData))
 				if err != nil {
-					fmt.Println("Failed to send webhook:", err)
+					slog.Error("Failed to send webhook", "error", err);
 					continue
 				}
 				_, _ = io.Copy(io.Discard, resp.Body)
-			resp.Body.Close()
+				resp.Body.Close()
 			}
 			
 		}
@@ -117,9 +153,10 @@ func (tm *TaskManager) StopTask(id string,reason error) {
 	defer tm.mu.Unlock()
 
 	if task, exists := tm.TaskMap[id]; exists {
+		
 		task.CancelFn(reason)
 	} else {
-		fmt.Println("Job already done / Cancelled")
+		slog.Error("Job already done / Cancelled");
 	}
 
 }
