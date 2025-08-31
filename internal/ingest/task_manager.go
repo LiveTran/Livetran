@@ -9,13 +9,12 @@ import (
 	"net/http"
 	"sync"
 	"time"
-
-	"go.opentelemetry.io/otel/attribute"
 )
 
 type UpdateResponse struct {
 	Status 		string
 	Update	 	string
+	StreamLink	string
 }
 
 type Task struct {
@@ -26,6 +25,7 @@ type Task struct {
 	Abr			bool
 	CancelFn	context.CancelCauseFunc
 	UpdatesChan	chan UpdateResponse
+	StreamURL   string
 	StartTime	time.Time
 }
 
@@ -56,39 +56,26 @@ func (task *Task) UpdateStatus(status string, update string) {
 	task.UpdatesChan <- UpdateResponse{
 		Status: status,
 		Update: update,
+		StreamLink: task.StreamURL,
 	}
 }
 
-func (tm *TaskManager) GetActiveStreams() (int64, []attribute.KeyValue) {
+func (tm *TaskManager) GetAllStreams() (active,idle,stopped int64) {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
-	count := 0
-	var attrs []attribute.KeyValue
-
-	for _, task := range tm.TaskMap {
-		if task.Status != StreamStopped {
-			count++
+	for _, stream := range tm.TaskMap {
+		switch stream.Status {
+			case StreamActive:
+				active++
+			case StreamStopped:
+				stopped++;
+			default:
+				idle++;
 		}
 	}
 
-	return int64(count), attrs
-}
-
-func (tm *TaskManager) GetIdleStreams() (int64, []attribute.KeyValue) {
-	tm.mu.Lock()
-	defer tm.mu.Unlock()
-
-	count := 0
-	var attrs []attribute.KeyValue
-
-	for _, task := range tm.TaskMap {
-		if task.Status == StreamReady || task.Status == StreamInit {
-			count++
-		}
-	}
-
-	return int64(count), attrs
+	return active,idle,stopped
 }
 
 
@@ -109,7 +96,8 @@ func (tm *TaskManager) StartTask(id string,webhooks []string, abr bool) {
 		Webhooks: 	 webhooks,
 		Abr:		 abr || false,
 		UpdatesChan: make(chan UpdateResponse, 4),
-		StartTime:   time.Now(), 
+		StreamURL:   "",
+		StartTime:   time.Now(),
 	}
 	tm.TaskMap[id] = task
 	tm.mu.Unlock()

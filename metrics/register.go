@@ -10,26 +10,38 @@ import (
 
 
 
-func RegisterGauge(ctx context.Context, meter metric.Meter, name string, description string, callbackFn func() int64) {
-
+func RegisterStatusGauge(
+	ctx context.Context,
+	meter metric.Meter,
+	name string,
+	description string,
+	callbackFn func() (active, idle, stopped int64),
+) {
 	gauge, err := meter.Int64ObservableGauge(
 		name,
 		metric.WithDescription(description),
 	)
 	if err != nil {
-		slog.Error("Error registering gauge", "Error", err);
+		slog.Error("Error creating gauge", "error", err)
 		return
 	}
 
 	_, err = meter.RegisterCallback(func(ctx context.Context, obs metric.Observer) error {
-		obs.ObserveInt64(gauge, callbackFn())
+		active, idle, stopped := callbackFn()
+
+		// Export each status with a "status" label
+		obs.ObserveInt64(gauge, idle, metric.WithAttributes(attribute.String("status", "idle")))
+		obs.ObserveInt64(gauge, active, metric.WithAttributes(attribute.String("status", "active")))
+		obs.ObserveInt64(gauge, stopped, metric.WithAttributes(attribute.String("status", "stopped")))
+
 		return nil
 	}, gauge)
-	if err != nil {
-		slog.Error("Error registering callback", "Error", err);
-	}
 
+	if err != nil {
+		slog.Error("Error registering callback", "error", err)
+	}
 }
+
 
 
 func RegisterUpDownCounter(ctx context.Context, meter metric.Meter, name string, description string, callbackFn func() (int64, []attribute.KeyValue)) {
@@ -39,7 +51,7 @@ func RegisterUpDownCounter(ctx context.Context, meter metric.Meter, name string,
 		metric.WithDescription(description),
 	)
 	if err != nil {
-		slog.Error("Error registering up/down counter", "Error", err)
+		slog.Error("Error registering up/down counter", "error", err)
 		return
 	}
 
@@ -53,7 +65,7 @@ func RegisterUpDownCounter(ctx context.Context, meter metric.Meter, name string,
 		return nil
 	}, counter)
 	if err != nil {
-		slog.Error("Error registering counter callback", "Error", err)
+		slog.Error("Error registering counter callback", "error", err)
 	}
 }
 
@@ -64,7 +76,7 @@ func RegisterHistogram(meter metric.Meter, name string, description string) (met
         metric.WithDescription(description),
     )
     if err != nil {
-        slog.Error("Error creating histogram", "Error", err)
+        slog.Error("Error creating histogram", "error", err)
         return nil, err
     }
 
