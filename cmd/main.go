@@ -2,6 +2,7 @@ package main
 
 import (
 	"log/slog"
+
 	"github.com/vijayvenkatj/LiveTran/internal/config"
 	api "github.com/vijayvenkatj/LiveTran/internal/http"
 	"github.com/vijayvenkatj/LiveTran/internal/ingest"
@@ -14,7 +15,9 @@ var tm *ingest.TaskManager
 func init() {
 	tm = ingest.NewTaskManager()
 	config.InitEnv()
-	config.InitSlog()
+
+	config.InitSlogOTLP()
+
 }
 
 func main() {
