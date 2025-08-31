@@ -94,7 +94,7 @@ func (a *APIServer) StartAPIServer(tm *ingest.TaskManager) error {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := server.Shutdown(shutdownCtx); err != nil {
-			slog.Error("server shutdown error", "Error", err)
+			slog.Error("server shutdown error", "error", err)
 		}
 	}()
 

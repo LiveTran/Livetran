@@ -63,7 +63,12 @@ func SrtConnectionTask(ctx context.Context, task *Task) {
 		return
 	}
 	
-	go uploader.WatchAndUpload(ctx, "output", bucket_name)
+	go uploader.WatchAndUpload(ctx, "output", bucket_name, task.Abr, func(url string) {
+		if task.StreamURL == "" {
+			task.StreamURL = url;
+			task.UpdateStatus(StreamActive, fmt.Sprintf("Live link generated : %s",url))
+		}
+	})
 
 	var wg sync.WaitGroup
 	handleStream(ctx, listener, task, &wg)
@@ -99,7 +104,7 @@ func handleStream(ctx context.Context, listener srt.Listener, task *Task, wg *sy
 				task.UpdateStatus(StreamActive, fmt.Sprintf("Accept failed : %s", err))
 				continue
 			}
-			task.UpdateStatus(StreamActive, "OBS connected!")
+			// task.UpdateStatus(StreamActive, "OBS connected!")
 
 			err = ProcessStream(ctx, conn, task, wg)
 			if err != nil {

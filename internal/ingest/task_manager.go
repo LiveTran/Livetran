@@ -14,6 +14,7 @@ import (
 type UpdateResponse struct {
 	Status 		string
 	Update	 	string
+	StreamLink	string
 }
 
 type Task struct {
@@ -24,6 +25,7 @@ type Task struct {
 	Abr			bool
 	CancelFn	context.CancelCauseFunc
 	UpdatesChan	chan UpdateResponse
+	StreamURL   string
 	StartTime	time.Time
 }
 
@@ -54,6 +56,7 @@ func (task *Task) UpdateStatus(status string, update string) {
 	task.UpdatesChan <- UpdateResponse{
 		Status: status,
 		Update: update,
+		StreamLink: task.StreamURL,
 	}
 }
 
@@ -93,7 +96,8 @@ func (tm *TaskManager) StartTask(id string,webhooks []string, abr bool) {
 		Webhooks: 	 webhooks,
 		Abr:		 abr || false,
 		UpdatesChan: make(chan UpdateResponse, 4),
-		StartTime:   time.Now(), 
+		StreamURL:   "",
+		StartTime:   time.Now(),
 	}
 	tm.TaskMap[id] = task
 	tm.mu.Unlock()
