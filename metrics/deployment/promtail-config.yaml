@@ -12,7 +12,7 @@ scrape_configs:
           - localhost
         labels:
           job: livetran
-          __path__: /log/livetran.log    # updated path inside container
+          __path__: /tmp/logs/livetran.log    # updated path inside container
     pipeline_stages:
       - json:
           expressions:

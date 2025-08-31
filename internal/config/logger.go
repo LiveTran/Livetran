@@ -43,7 +43,7 @@ func InitSlogOTLP() {
     otel.SetTracerProvider(tp)
 
     // --- Write slog logs to a specific file ---
-    logFile, err := os.OpenFile("/Users/vijayvenkatj/Livetran/metrics/deployment/log/livetran.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+    logFile, err := os.OpenFile("/tmp/logs/livetran.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
     if err != nil {
         log.Fatalf("failed to open log file: %v", err)
     }

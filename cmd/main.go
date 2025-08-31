@@ -2,7 +2,6 @@ package main
 
 import (
 	"log/slog"
-	"time"
 
 	"github.com/vijayvenkatj/LiveTran/internal/config"
 	api "github.com/vijayvenkatj/LiveTran/internal/http"
@@ -19,13 +18,6 @@ func init() {
 
 	config.InitSlogOTLP()
 
-	slog.Info("App started")
-    slog.Error("Test error")
-    slog.Warn("Test warning")
-    
-    time.Sleep(2 * time.Second) // Give time for logs to flush
-    
-    slog.Info("App ending")
 }
 
 func main() {

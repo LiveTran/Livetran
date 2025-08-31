@@ -45,7 +45,7 @@ services:
     image: grafana/promtail:latest
     container_name: promtail
     volumes:
-      - ./log:/log                   # Mount host ./log folder into container
+      - /tmp/logs:/tmp/logs                   # Mount host ./log folder into container
       - ./promtail-config.yaml:/etc/promtail/promtail.yaml
     command: -config.file=/etc/promtail/promtail.yaml
     depends_on:
