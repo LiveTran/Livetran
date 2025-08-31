@@ -31,7 +31,7 @@ func IsMetricsEnabled() bool {
 func InitMeterProvider(ctx context.Context) (*metric.MeterProvider, error) {
 	// Check if metrics are enabled
 	if !IsMetricsEnabled() {
-		return nil, fmt.Errorf("metrics not enabled!")
+		return nil, fmt.Errorf("metrics not enabled")
 	}
 
 	endpoint := getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "localhost:4318")

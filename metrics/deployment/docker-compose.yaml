@@ -1,24 +1,53 @@
-version: "3.9"
-
 services:
-  otel-collector:
-    image: otel/opentelemetry-collector:latest
-    command: ["--config=/etc/otel/config.yaml"]
-    volumes:
-      - ./config.yaml:/etc/otel/config.yaml:ro
-    ports:
-      - "4317:4317"   # OTLP gRPC
-      - "4318:4318"   # OTLP HTTP
-      - "9464:9464"   # Prometheus exporter
-
   prometheus:
     image: prom/prometheus:latest
-    volumes:
-      - ./prometheus.yaml:/etc/prometheus/prometheus.yml:ro
+    container_name: prometheus
     ports:
       - "9090:9090"
+    volumes:
+      - ./prometheus.yaml:/etc/prometheus/prometheus.yml
 
   grafana:
     image: grafana/grafana:latest
+    container_name: grafana
     ports:
       - "3001:3000"
+    environment:
+      - GF_LOG_MODE=console
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    depends_on:
+      - prometheus
+      - loki
+
+  loki:
+    image: grafana/loki:latest
+    container_name: loki
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./loki-config.yaml:/etc/loki/local-config.yaml
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: otel-collector
+    ports:
+      - "4317:4317"  # OTLP gRPC
+      - "4318:4318"  # OTLP HTTP
+      - "9464:9464"  # Prometheus metrics endpoint
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    depends_on:
+      - loki
+
+  promtail:
+    image: grafana/promtail:latest
+    container_name: promtail
+    volumes:
+      - ./log:/log                   # Mount host ./log folder into container
+      - ./promtail-config.yaml:/etc/promtail/promtail.yaml
+    command: -config.file=/etc/promtail/promtail.yaml
+    depends_on:
+      - loki
+
