@@ -9,8 +9,6 @@ import (
 	"net/http"
 	"sync"
 	"time"
-
-	"go.opentelemetry.io/otel/attribute"
 )
 
 type UpdateResponse struct {
@@ -59,36 +57,22 @@ func (task *Task) UpdateStatus(status string, update string) {
 	}
 }
 
-func (tm *TaskManager) GetActiveStreams() (int64, []attribute.KeyValue) {
+func (tm *TaskManager) GetAllStreams() (active,idle,stopped int64) {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
-	count := 0
-	var attrs []attribute.KeyValue
-
-	for _, task := range tm.TaskMap {
-		if task.Status != StreamStopped {
-			count++
+	for _, stream := range tm.TaskMap {
+		switch stream.Status {
+			case StreamActive:
+				active++
+			case StreamStopped:
+				stopped++;
+			default:
+				idle++;
 		}
 	}
 
-	return int64(count), attrs
-}
-
-func (tm *TaskManager) GetIdleStreams() (int64, []attribute.KeyValue) {
-	tm.mu.Lock()
-	defer tm.mu.Unlock()
-
-	count := 0
-	var attrs []attribute.KeyValue
-
-	for _, task := range tm.TaskMap {
-		if task.Status == StreamReady || task.Status == StreamInit {
-			count++
-		}
-	}
-
-	return int64(count), attrs
+	return active,idle,stopped
 }
 
 

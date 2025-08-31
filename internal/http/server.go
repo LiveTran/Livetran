@@ -15,7 +15,6 @@ import (
 	"github.com/vijayvenkatj/LiveTran/internal/ingest"
 	"github.com/vijayvenkatj/LiveTran/metrics"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
 
@@ -53,7 +52,7 @@ func (a *APIServer) StartAPIServer(tm *ingest.TaskManager) error {
 		shutdownFunc = func() {
 			shCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			if err := mp.(metric.MeterProvider).(interface{ Shutdown(context.Context) error }).Shutdown(shCtx); err != nil {
+			if err := mp.(interface{ Shutdown(context.Context) error }).Shutdown(shCtx); err != nil {
 				slog.Error("failed to shutdown metrics", "error", err)
 			}
 		}
@@ -61,11 +60,8 @@ func (a *APIServer) StartAPIServer(tm *ingest.TaskManager) error {
 
 		meter := mp.Meter("live-streaming-api")
 
-		metrics.RegisterUpDownCounter(ctx, meter, "active_streams", "no of active streams", func() (int64, []attribute.KeyValue) {
-			return tm.GetActiveStreams()
-		})
-		metrics.RegisterUpDownCounter(ctx, meter, "idle_streams", "no of idle streams or initialised", func() (int64, []attribute.KeyValue) {
-			return tm.GetIdleStreams()
+		metrics.RegisterStatusGauge(ctx, meter, "streams_info", "stream information based on status", func() (active,idle,stopped int64) {
+			return tm.GetAllStreams()
 		})
 	}
 
