@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	"log/slog"
 
 	"github.com/vijayvenkatj/LiveTran/internal/config"
 	api "github.com/vijayvenkatj/LiveTran/internal/http"
@@ -15,13 +15,16 @@ var tm *ingest.TaskManager
 func init() {
 	tm = ingest.NewTaskManager()
 	config.InitEnv()
+
+	config.InitSlogOTLP()
+
 }
 
 func main() {
 	apiServer := api.NewAPIServer(":8080")
 	err := apiServer.StartAPIServer(tm);
 	if err != nil {
-		fmt.Println("Error starting server: ",err)
+		slog.Error("SERVER STARTUP", "error", err)
 		return
 	}
 }

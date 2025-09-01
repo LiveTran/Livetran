@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -32,7 +33,7 @@ func CreateCloudFlareUploader(ctx context.Context, accessKeyId string, accessKey
 		config.WithRegion("auto"),
 	)
 	if err != nil {
-		fmt.Println(err)
+		slog.Error("Error creating cloudflare uploader","error",err);
 		return nil, err
 	}
 
@@ -66,7 +67,7 @@ func detectContentType(key string) string {
 	}
 }
 
-func (uploader *CloudflareUploader) WatchAndUpload(ctx context.Context, outputDir string, bucket string) {
+func (uploader *CloudflareUploader) WatchAndUpload(ctx context.Context, outputDir string, bucket string, abr bool, linkCallback func(url string)) {
 	var wg sync.WaitGroup
 
 	watcher, err := fsnotify.NewWatcher()
@@ -111,7 +112,7 @@ func (uploader *CloudflareUploader) WatchAndUpload(ctx context.Context, outputDi
 					// TODO: Add a better solution for checking file
 					file, err := os.Open(path)
 					if err != nil {
-						fmt.Println("Issue uploading:", path)
+						slog.Error("Issue uploading", "path", path)
 						return
 					}
 					defer file.Close()
@@ -121,7 +122,7 @@ func (uploader *CloudflareUploader) WatchAndUpload(ctx context.Context, outputDi
 					for i := 0; i < 3; i++ {
 						err = uploader.UploadStream(ctx, bucket, key, file, contentType)
 						if err == nil {
-							fmt.Println("Upload Successful",key)
+							slog.Info("Upload Successful", "key", key)
 							break
 						}
 						time.Sleep(time.Second * time.Duration(i+1)) // exponential backoff
@@ -130,8 +131,7 @@ func (uploader *CloudflareUploader) WatchAndUpload(ctx context.Context, outputDi
 			}
 
 			// Handle M3U8 files (on create or update)
-			if strings.HasSuffix(event.Name, ".m3u8") &&
-				(event.Op&fsnotify.Create == fsnotify.Create || event.Op&fsnotify.Write == fsnotify.Write) {
+			if strings.HasSuffix(event.Name, ".m3u8") && (event.Op&fsnotify.Create == fsnotify.Create || event.Op&fsnotify.Write == fsnotify.Write) {
 
 				wg.Add(1)
 				go func(path, key string) {
@@ -140,7 +140,7 @@ func (uploader *CloudflareUploader) WatchAndUpload(ctx context.Context, outputDi
 					time.Sleep(200 * time.Millisecond)
 					file, err := os.Open(path)
 					if err != nil {
-						fmt.Println("Issue uploading:", path)
+						slog.Error("Issue uploading", "path", path)
 						return
 					}
 					defer file.Close()
@@ -150,11 +150,24 @@ func (uploader *CloudflareUploader) WatchAndUpload(ctx context.Context, outputDi
 					for i := 0; i < 3; i++ {
 						err = uploader.UploadStream(ctx, bucket, key, file, contentType)
 						if err == nil {
-							fmt.Println("Upload Successful",key)
+							slog.Info("Upload Successful", "key", key)
+
+							public_url := os.Getenv("CLOUDFLARE_PUBLIC_URL")
+							url := fmt.Sprintf("%s/%s", public_url, key)
+
+							if linkCallback != nil {
+								if !abr {
+									linkCallback(url)
+								} else if strings.Contains(strings.ToLower(url), "master") {
+									linkCallback(url)
+								}
+							}
 							break
 						}
-						time.Sleep(time.Second * time.Duration(i+1))
+
+						time.Sleep(time.Second * time.Duration(i+1)) // exponential backoff
 					}
+
 				}(path, key)
 			}
 
@@ -162,7 +175,7 @@ func (uploader *CloudflareUploader) WatchAndUpload(ctx context.Context, outputDi
 			if !ok {
 				return
 			}
-			fmt.Println("ERROR:", err)
+			slog.Error("Watcher error", "error", err)
 		}
 	}
 }
