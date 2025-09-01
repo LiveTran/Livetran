@@ -53,9 +53,9 @@ LiveTran follows a microservices architecture with the following components:
    # Edit .env with your Cloudflare R2 credentials and other settings
    ```
 
-3. **Launch the application:**
+3. **Build the application:**
    ```bash
-   docker-compose up --build
+   docker build -t live-tran-server:latest .
    ```
 
 ### Option 2: Local Development
