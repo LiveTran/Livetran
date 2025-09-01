@@ -1,3 +1,9 @@
+version: "3.9"
+
+networks:
+  metrics-net:
+    driver: bridge
+
 services:
   prometheus:
     image: prom/prometheus:latest
@@ -5,7 +11,12 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - ./prometheus.yaml:/etc/prometheus/prometheus.yml
+      - ./configs/prometheus:/etc/prometheus:Z
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    networks:
+      - metrics-net
+    restart: unless-stopped
 
   grafana:
     image: grafana/grafana:latest
@@ -15,18 +26,39 @@ services:
     environment:
       - GF_LOG_MODE=console
       - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - ./configs/grafana/provisioning:/etc/grafana/provisioning:Z
     depends_on:
       - prometheus
       - loki
+    networks:
+      - metrics-net
+    restart: unless-stopped
 
   loki:
     image: grafana/loki:latest
     container_name: loki
     ports:
       - "3100:3100"
-    command: -config.file=/etc/loki/local-config.yaml
     volumes:
-      - ./loki-config.yaml:/etc/loki/local-config.yaml
+      - ./configs/loki:/etc/loki:Z
+    command: -config.file=/etc/loki/loki-config.yaml
+    networks:
+      - metrics-net
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:latest
+    container_name: promtail
+    volumes:
+      - /tmp/logs:/tmp/logs:Z
+      - ./configs/promtail:/etc/promtail:Z
+    command: -config.file=/etc/promtail/promtail-config.yaml
+    depends_on:
+      - loki
+    networks:
+      - metrics-net
+    restart: unless-stopped
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
@@ -34,20 +66,12 @@ services:
     ports:
       - "4317:4317"  # OTLP gRPC
       - "4318:4318"  # OTLP HTTP
-      - "9464:9464"  # Prometheus metrics endpoint
+      - "9464:9464"  # Prometheus metrics
     volumes:
-      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
-    command: ["--config=/etc/otel-collector-config.yaml"]
+      - ./configs/otel-collector:/etc/otel-collector:Z
+    command: ["--config=/etc/otel-collector/otel-collector-config.yaml"]
     depends_on:
       - loki
-
-  promtail:
-    image: grafana/promtail:latest
-    container_name: promtail
-    volumes:
-      - /tmp/logs:/tmp/logs                   # Mount host ./log folder into container
-      - ./promtail-config.yaml:/etc/promtail/promtail.yaml
-    command: -config.file=/etc/promtail/promtail.yaml
-    depends_on:
-      - loki
-
+    networks:
+      - metrics-net
+    restart: unless-stopped
