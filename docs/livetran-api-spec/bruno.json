@@ -1,0 +1,23 @@
+{
+  "version": "1",
+  "name": "livetran-api-spec",
+  "type": "collection",
+  "ignore": [
+    "node_modules",
+    ".git"
+  ],
+  "size": 0,
+  "filesCount": 0,
+  "clientCertificates": {
+    "enabled": true,
+    "certs": [
+      {
+        "domain": "localhost:8080",
+        "type": "cert",
+        "certFilePath": "../../keys/localhost.pem",
+        "keyFilePath": "../../keys/localhost-key.pem",
+        "passphrase": ""
+      }
+    ]
+  }
+}

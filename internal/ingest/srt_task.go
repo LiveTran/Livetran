@@ -176,68 +176,66 @@ func ProcessStream(ctx context.Context, conn srt.Conn, task *Task, wg *sync.Wait
 	if task.Abr {
 		cmd = exec.Command("ffmpeg",
 			"-f", "mpegts",
-			"-fflags", "+nobuffer",
-			"-flags", "low_delay",
-			"-max_delay", "0",
 			"-i", "pipe:0",
-
-			// Common encoder settings
+	
+			// Encoder settings tuned for stability
 			"-c:v", "libx264",
-			"-preset", "ultrafast",
+			"-preset", "veryfast",
 			"-tune", "zerolatency",
 			"-crf", "23",
-			"-g", "30",
-			"-keyint_min", "30",
+			"-g", "60",           // GOP size = 2s (for 30fps)
+			"-keyint_min", "60",
+			"-sc_threshold", "0", // consistent keyframes across variants
 			"-c:a", "aac",
-
-			// Per-variant settings
-			"-map", "0:v:0", "-map", "0:a:0", "-b:v:0", "5000k", "-s:v:0", "1920x1080", "-b:a:0", "128k",
-			"-map", "0:v:0", "-map", "0:a:0", "-b:v:1", "3000k", "-s:v:1", "1280x720", "-b:a:1", "96k",
-			"-map", "0:v:0", "-map", "0:a:0", "-b:v:2", "1500k", "-s:v:2", "854x480", "-b:a:2", "64k",
-
-			// HLS / LL-HLS options
+			"-ar", "48000",
+			"-b:a", "128k",
+	
+			// Define variants (ABR ladder)
+			"-map", "0:v:0", "-map", "0:a:0", "-b:v:0", "5000k", "-s:v:0", "1920x1080",
+			"-map", "0:v:0", "-map", "0:a:0", "-b:v:1", "3000k", "-s:v:1", "1280x720",
+			"-map", "0:v:0", "-map", "0:a:0", "-b:v:2", "1500k", "-s:v:2", "854x480",
+	
+			// HLS configuration (stable)
 			"-f", "hls",
-			"-hls_time", "1", // 1 second segments for LL
-			"-hls_list_size", "0",
-			"-hls_flags", "append_list+independent_segments+delete_segments",
+			"-hls_time", "4",                     // 4-second segments for stability
+			"-hls_list_size", "10",               // keep last 10 segments
+			"-hls_flags", "delete_segments+independent_segments+append_list",
 			"-hls_segment_type", "mpegts",
 			"-hls_allow_cache", "1",
-
-			// Multi-bitrate outputs
+	
+			// Variant mapping and output
 			"-var_stream_map", "v:0,a:0 v:1,a:1 v:2,a:2",
 			"-master_pl_name", fmt.Sprintf("%s_master.m3u8", task.Id),
-			"-hls_segment_filename", fmt.Sprintf("output/%s_%%v-%%03d.ts", task.Id),
+			"-hls_segment_filename", fmt.Sprintf("output/%s_%%v_%%03d.ts", task.Id),
 			fmt.Sprintf("output/%s_%%v.m3u8", task.Id),
 		)
 	} else {
 		cmd = exec.Command("ffmpeg",
 			"-f", "mpegts",
-			"-fflags", "+nobuffer",
-			"-flags", "low_delay",
-			"-max_delay", "0",
 			"-i", "pipe:0",
-
+	
+			// Simpler single-stream settings
 			"-c:v", "libx264",
-			"-preset", "ultrafast",
+			"-preset", "veryfast",
 			"-tune", "zerolatency",
 			"-crf", "23",
-			"-g", "30",
-			"-keyint_min", "30",
-
+			"-g", "60",
+			"-keyint_min", "60",
 			"-c:a", "aac",
 			"-b:a", "128k",
-
+	
 			"-f", "hls",
-			"-hls_time", "1",          // Segment duration: 1s for low latency
-			"-hls_list_size", "0",     // Unlimited playlist size for live streams
-			"-hls_flags", "append_list+independent_segments+delete_segments",
+			"-hls_time", "4",                   
+			"-hls_list_size", "10",
+			"-hls_flags", "delete_segments+independent_segments+append_list",
 			"-hls_segment_type", "mpegts",
 			"-hls_allow_cache", "1",
-			"-hls_segment_filename", fmt.Sprintf("output/%s-%%03d.ts", task.Id),
-
+	
+			"-hls_segment_filename", fmt.Sprintf("output/%s_%%03d.ts", task.Id),
 			fmt.Sprintf("output/%s.m3u8", task.Id),
 		)
 	}
+	
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {

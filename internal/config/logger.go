@@ -44,9 +44,15 @@ func InitSlogOTLP() {
     otel.SetTracerProvider(tp)
 
     // --- Open log file ---
-    logFile, err := os.OpenFile("/tmp/logs/livetran.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+
+    logDir := "/tmp/logs"
+    if _, err := os.Stat(logDir); os.IsNotExist(err) {
+        os.MkdirAll(logDir, os.ModePerm)
+    }
+
+    logFile, err := os.Create("/tmp/logs/livetran.log")
     if err != nil {
-        log.Fatalf("failed to open log file: %v", err)
+        log.Fatalf("failed to create log file: %v", err)
     }
 
     // --- MultiWriter to write both to console and file ---

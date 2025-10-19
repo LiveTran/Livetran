@@ -1,0 +1,26 @@
+meta {
+  name: Status
+  type: http
+  seq: 3
+}
+
+get {
+  url: https://localhost:8080/api/status
+  body: json
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+  LT-SIGNATURE: dd5548bf371a2c1b2aee295e23ff39493adf587f35cddac76f4058efca4ad832
+}
+
+body:json {
+  {
+    "stream_id": "req1"
+  }
+}
+
+settings {
+  encodeUrl: true
+}

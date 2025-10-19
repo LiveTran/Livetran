@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 )
@@ -33,6 +34,7 @@ func VerifyRequest(next http.Handler) http.Handler {
 		secret := os.Getenv("HMAC_SECRET")
 		if secret == "" {
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			slog.Error("HMAC Secret not set in Env")
 			return
 		}
 

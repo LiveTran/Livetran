@@ -1,0 +1,28 @@
+meta {
+  name: Start Request
+  type: http
+  seq: 1
+}
+
+post {
+  url: https://localhost:8080/api/start-stream
+  body: json
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+  LT-SIGNATURE: e7c5164cd6598ae63363640993d6ab048352d8eb03cf81a8491cce2816e373f6
+}
+
+body:json {
+  {
+      "stream_id": "req1",
+      "webhook_urls": [],
+      "abr": true
+  }
+}
+
+settings {
+  encodeUrl: true
+}
