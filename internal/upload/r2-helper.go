@@ -68,7 +68,7 @@ func detectContentType(key string) string {
 }
 
 // WatchAndUpload monitors a directory and uploads new .ts and .m3u8 files to Cloudflare R2
-func (uploader *CloudflareUploader) WatchAndUpload(ctx context.Context, outputDir string, bucket string, abr bool, linkCallback func(url string)) {
+func (uploader *CloudflareUploader) WatchAndUpload(ctx context.Context, outputDir string, taskId string, bucket string, abr bool, linkCallback func(url string)) {
 	var wg sync.WaitGroup
 
 	watcher, err := fsnotify.NewWatcher()
@@ -98,7 +98,7 @@ func (uploader *CloudflareUploader) WatchAndUpload(ctx context.Context, outputDi
 				continue
 			}
 
-			key := filepath.Base(event.Name)
+			key := taskId + "/" + filepath.Base(event.Name)
 			path := event.Name
 
 			// === Handle TS files (on create only) ===

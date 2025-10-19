@@ -62,8 +62,15 @@ func SrtConnectionTask(ctx context.Context, task *Task) {
 		task.UpdateStatus(StreamStopped,"Failed to initialise storage")
 		return
 	}
+
+	uploadDir := fmt.Sprintf("output/%s", task.Id)
+	err = os.MkdirAll(uploadDir, os.ModePerm)
+	if err != nil {
+		task.UpdateStatus(StreamStopped, fmt.Sprintf("Failed to create upload directory : %s", err))
+		return
+	}
 	
-	go uploader.WatchAndUpload(ctx, "output", bucket_name, task.Abr, func(url string) {
+	go uploader.WatchAndUpload(ctx, uploadDir, task.Id, bucket_name, task.Abr, func(url string) {
 		if task.StreamURL == "" {
 			task.StreamURL = url;
 			task.UpdateStatus(StreamActive, fmt.Sprintf("Live link generated : %s",url))
@@ -173,6 +180,12 @@ func WaitForConnection(ctx context.Context, listener srt.Listener, task *Task) (
 func ProcessStream(ctx context.Context, conn srt.Conn, task *Task, wg *sync.WaitGroup) error {
 
 	var cmd *exec.Cmd
+
+	file := os.MkdirAll(fmt.Sprintf("output/%s", task.Id), os.ModePerm)
+	if file != nil {
+		return fmt.Errorf("failed to create output directory: %s", file)
+	}
+
 	if task.Abr {
 		cmd = exec.Command("ffmpeg",
 			"-f", "mpegts",
@@ -206,8 +219,8 @@ func ProcessStream(ctx context.Context, conn srt.Conn, task *Task, wg *sync.Wait
 			// Variant mapping and output
 			"-var_stream_map", "v:0,a:0 v:1,a:1 v:2,a:2",
 			"-master_pl_name", fmt.Sprintf("%s_master.m3u8", task.Id),
-			"-hls_segment_filename", fmt.Sprintf("output/%s_%%v_%%03d.ts", task.Id),
-			fmt.Sprintf("output/%s_%%v.m3u8", task.Id),
+			"-hls_segment_filename", fmt.Sprintf("output/%s/%s_%%v_%%03d.ts", task.Id,task.Id),
+			fmt.Sprintf("output/%s/%s_%%v.m3u8", task.Id,task.Id),
 		)
 	} else {
 		cmd = exec.Command("ffmpeg",
