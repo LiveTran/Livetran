@@ -1,32 +1,346 @@
 ---
-title: "Deploying with Docker"
-description: "How to run Livetran in a Docker container."
+title: "Deployment Guide"
+description: "Complete guide to deploying Livetran in production."
 ---
 
-## Running Livetran with Docker
+This guide covers deploying Livetran using Docker (recommended) or running it locally. We'll cover environment configuration, TLS certificates, and production best practices.
 
-I've included a `Dockerfile` in the project to make it super easy to get Livetran up and running in a container. This is the recommended way to deploy the application in production.
+## Prerequisites
+
+Before deploying Livetran, ensure you have:
+
+- **Docker** (for containerized deployment) or **Go 1.21+** (for local deployment)
+- **FFmpeg** installed (included in Docker image)
+- **Cloudflare R2** account with bucket and credentials
+- **TLS certificates** for HTTPS (self-signed for dev, valid certs for production)
+- **Network access** to Cloudflare R2 API endpoints
+
+## Environment Configuration
+
+Livetran uses environment variables for configuration. Create a `.env` file in the project root:
+
+### Required Variables
+
+```bash
+# API Authentication
+HMAC_SECRET=your-hmac-secret-here-min-32-characters
+JWT_SECRET=your-jwt-secret-here-min-32-characters
+
+# Cloudflare R2 Configuration
+R2_ACCOUNT_ID=your-cloudflare-account-id
+R2_ACCESS_KEY=your-r2-access-key-id
+R2_SECRET_KEY=your-r2-secret-access-key
+BUCKET_NAME=your-r2-bucket-name
+CLOUDFLARE_PUBLIC_URL=https://your-r2-public-domain.com/hls
+```
+
+### Optional Variables (Metrics)
+
+```bash
+# OpenTelemetry Metrics (optional)
+ENABLE_METRICS=true
+OTEL_EXPORTER_OTLP_ENDPOINT=localhost:4318
+OTEL_EXPORTER_OTLP_INSECURE=true
+SERVICE_VERSION=1.0.0
+ENV=production
+```
+
+### Generating Secrets
+
+Generate secure random secrets:
+
+```bash
+# Generate HMAC_SECRET
+HMAC_SECRET=$(openssl rand -hex 32)
+
+# Generate JWT_SECRET
+JWT_SECRET=$(openssl rand -hex 32)
+```
+
+### Cloudflare R2 Setup
+
+1. **Create an R2 Bucket**:
+   - Log into Cloudflare Dashboard
+   - Navigate to R2 → Create bucket
+   - Choose a bucket name (e.g., `livetran-streams`)
+
+2. **Create API Token**:
+   - Go to R2 → Manage R2 API Tokens
+   - Create token with read/write permissions
+   - Save the `Access Key ID` and `Secret Access Key`
+
+3. **Get Account ID**:
+   - Found in the R2 dashboard URL or account settings
+
+4. **Configure Public Access** (optional):
+   - Set up a custom domain or use R2.dev subdomain
+   - Configure CORS if needed for web players
+   - Set `CLOUDFLARE_PUBLIC_URL` to your public endpoint
+
+## TLS Certificates
+
+Livetran requires TLS certificates for HTTPS. Place them in the `keys/` directory:
+
+```
+keys/
+  ├── localhost.pem      # Certificate
+  └── localhost-key.pem  # Private key
+```
+
+### Development (Self-Signed)
+
+Generate self-signed certificates for local testing:
+
+```bash
+mkdir -p keys
+openssl req -x509 -newkey rsa:4096 -keyout keys/localhost-key.pem \
+  -out keys/localhost.pem -days 365 -nodes \
+  -subj "/CN=localhost"
+```
+
+### Production (Let's Encrypt)
+
+For production, use Let's Encrypt or your CA:
+
+```bash
+# Using certbot
+certbot certonly --standalone -d your-domain.com
+
+# Copy certificates
+cp /etc/letsencrypt/live/your-domain.com/fullchain.pem keys/localhost.pem
+cp /etc/letsencrypt/live/your-domain.com/privkey.pem keys/localhost-key.pem
+```
+
+<Warning>
+  Never commit certificates or secrets to version control. Add `keys/` and `.env` to `.gitignore`.
+</Warning>
+
+## Docker Deployment
+
+Docker is the recommended deployment method for production.
 
 ### Building the Image
 
-First, you'll need to build the Docker image. Open up a terminal in the project's root directory and run the following command:
-
 ```bash
-docker build -t livetran .
+docker build -t livetran:latest .
 ```
 
-This will create a new Docker image with the tag `livetran`.
+The Dockerfile uses a multi-stage build:
+- **Stage 1**: Builds the Go binary
+- **Stage 2**: Creates minimal Alpine image with FFmpeg
 
 ### Running the Container
 
-Once the image is built, you can start a container with this command:
-
+**Basic Run:**
 ```bash
-docker run -d -p 8080:8080 --name livetran-server livetran
+docker run -d \
+  --name livetran \
+  -p 8080:8080 \
+  --env-file .env \
+  -v "$(pwd)/keys:/app/keys:ro" \
+  -v "$(pwd)/output:/app/output" \
+  livetran:latest
 ```
 
-This will start the Livetran server in a detached container and map port 8080 on your host to port 8080 in the container.
+**Production Run (with restart policy):**
+```bash
+docker run -d \
+  --name livetran \
+  --restart unless-stopped \
+  -p 8080:8080 \
+  --env-file .env \
+  -v "$(pwd)/keys:/app/keys:ro" \
+  -v "$(pwd)/output:/app/output" \
+  livetran:latest
+```
 
-### A Note on `.env` and Keys
+**Docker Compose Example:**
+```yaml
+version: '3.8'
 
-The `Dockerfile` is set up to copy your `.env` file and the contents of the `keys` directory into the image. Make sure you have these set up correctly before building the image, especially for a production environment. 
+services:
+  livetran:
+    build: .
+    container_name: livetran
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    volumes:
+      - ./keys:/app/keys:ro
+      - ./output:/app/output
+    environment:
+      - ENABLE_METRICS=true
+      - OTEL_EXPORTER_OTLP_ENDPOINT=otel-collector:4318
+```
+
+### Volume Mounts
+
+- `keys/`: Read-only mount for TLS certificates
+- `output/`: Read-write mount for HLS files (persists across restarts)
+
+### Port Configuration
+
+The server listens on port `8080` by default (HTTPS). To change the port, modify `cmd/main.go` or use a reverse proxy.
+
+## Local Deployment
+
+For development or testing, you can run Livetran directly:
+
+### Prerequisites
+
+```bash
+# Install Go 1.21+
+go version
+
+# Install FFmpeg
+ffmpeg -version
+
+# Install dependencies
+go mod download
+```
+
+### Running
+
+```bash
+# Set environment variables
+export $(cat .env | xargs)
+
+# Run the server
+go run ./cmd/main.go
+```
+
+The server will start on `:8080` (or the port specified in `main.go`).
+
+## Production Considerations
+
+### Reverse Proxy (Recommended)
+
+Use nginx or Caddy as a reverse proxy for:
+- SSL termination (if using Let's Encrypt)
+- Rate limiting
+- Request logging
+- Load balancing (multiple instances)
+
+**Nginx Example:**
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name your-domain.com;
+
+    ssl_certificate /path/to/cert.pem;
+    ssl_certificate_key /path/to/key.pem;
+
+    location / {
+        proxy_pass https://localhost:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        
+        # Rate limiting
+        limit_req zone=api burst=10 nodelay;
+    }
+}
+```
+
+### Resource Requirements
+
+**Per Stream:**
+- **CPU**: 1-2 cores (FFmpeg encoding is CPU-intensive)
+- **RAM**: 200-500 MB
+- **Disk**: ~50 MB per minute of stream (HLS segments)
+- **Network**: Depends on bitrate (5 Mbps for 1080p ABR)
+
+**Server Minimum:**
+- **CPU**: 2 cores
+- **RAM**: 2 GB
+- **Disk**: 10 GB+ (for HLS output before R2 upload)
+
+### Monitoring
+
+Enable OpenTelemetry metrics for production monitoring:
+
+```bash
+ENABLE_METRICS=true
+OTEL_EXPORTER_OTLP_ENDPOINT=your-otel-collector:4318
+```
+
+See `metrics/deployment/` for sample Grafana, Prometheus, and Loki configurations.
+
+### Logging
+
+Livetran uses structured logging with `slog`. Logs include:
+- Request details (remote address, user agent)
+- Stream lifecycle events
+- Error messages with context
+- Upload status
+
+Configure log aggregation (e.g., Loki, ELK) for production.
+
+### Health Checks
+
+Currently, Livetran doesn't expose a health check endpoint. Consider:
+- Adding `/health` endpoint
+- Monitoring stream status via `/api/status`
+- Checking process health via Docker health checks
+
+### Backup & Recovery
+
+- **Secrets**: Store `HMAC_SECRET` and `JWT_SECRET` in secret management (e.g., HashiCorp Vault)
+- **TLS Certificates**: Backup certificate files securely
+- **Configuration**: Version control `.env.example` (without secrets)
+- **Stream State**: Currently in-memory; consider persistence for production
+
+### Scaling
+
+Livetran is designed for horizontal scaling:
+- Each instance manages its own streams
+- Use a load balancer to distribute API requests
+- Streams are isolated per instance
+- Consider a shared state store for multi-instance deployments
+
+## Troubleshooting
+
+### "Load .ENV error"
+- **Cause**: `.env` file not found or not readable
+- **Solution**: Ensure `.env` exists in project root or use environment variables
+
+### "HMAC Secret not set in Env"
+- **Cause**: `HMAC_SECRET` environment variable missing
+- **Solution**: Set `HMAC_SECRET` in `.env` or environment
+
+### "Failed to initialise secrets"
+- **Cause**: R2 credentials missing or invalid
+- **Solution**: Verify `R2_ACCOUNT_ID`, `R2_ACCESS_KEY`, and `R2_SECRET_KEY` are set
+
+### "Failed to create upload directory"
+- **Cause**: Insufficient permissions or disk space
+- **Solution**: Check directory permissions and available disk space
+
+### Port Already in Use
+- **Cause**: Another process is using port 8080
+- **Solution**: Change port in `main.go` or stop conflicting service
+
+### TLS Certificate Errors
+- **Cause**: Invalid or missing certificates
+- **Solution**: Verify certificates exist in `keys/` and are valid
+
+## Security Checklist
+
+- [ ] Use strong, randomly generated secrets (32+ characters)
+- [ ] Enable HTTPS with valid TLS certificates
+- [ ] Restrict network access (firewall rules)
+- [ ] Use reverse proxy for rate limiting
+- [ ] Store secrets in secret management system
+- [ ] Regularly rotate `HMAC_SECRET` and `JWT_SECRET`
+- [ ] Monitor logs for suspicious activity
+- [ ] Keep dependencies updated (`go mod tidy`)
+- [ ] Use read-only mounts for certificates
+- [ ] Implement backup strategy for configuration
+
+## Next Steps
+
+- Configure [Authentication](/guide/authentication) for API security
+- Set up [Ingestion](/guide/ingestion) for SRT connections
+- Configure [Uploading](/guide/uploading) for R2 integration
+- Review [API Reference](/api-reference) for endpoint details 

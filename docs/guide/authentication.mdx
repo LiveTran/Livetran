@@ -1,20 +1,259 @@
 ---
 title: "Keeping Things Secure"
-description: "How Livetran keeps your streams safe."
+description: "Complete guide to Livetran's authentication and security features."
 ---
 
-## Keeping Your Streams Private
+Livetran implements a two-layer security model: HMAC-SHA256 request signing for API access and JWT-based stream keys for encoder authentication. This ensures that only authorized clients can manage streams and only valid encoders can publish video.
 
-Security is a big deal, and I've built in a couple of layers to make sure your streams are only seen by the people you want them to be seen by.
+## API Request Authentication (HMAC-SHA256)
 
-### Stream Keys (Your Secret Handshake)
+All API requests to `/api/*` endpoints must include a valid `LT-SIGNATURE` header. This prevents unauthorized access to stream management functions.
 
-When you start a new stream, Livetran gives you a special stream key. Think of it like a secret password for your stream. It's actually a JSON Web Token (JWT) that has the `stream_id` and an expiration time baked into it.
+### How It Works
 
-You'll need to include this key in your SRT connection URL. When your streaming software connects, Livetran checks the key to make sure it's valid and that it matches the stream you're trying to send.
+1. **Client Side**: Compute HMAC-SHA256 hash of the raw request body using your `HMAC_SECRET`
+2. **Encoding**: Convert the hash to hexadecimal string
+3. **Header**: Include the hex string in the `LT-SIGNATURE` header
+4. **Server Side**: Server recomputes the hash and compares it with the provided signature
 
-<Callout intent="info">
-  **Don't Forget to Sign Your Requests!**
-  
-  When you're talking to the REST API, you'll need to sign your requests with HMAC-SHA256. Just hash the request body with your secret key and stick it in the `LT-SIGNATURE` header. This makes sure that nobody can impersonate you and mess with your streams.
-</Callout> 
+### Generating Signatures
+
+The signature is computed as:
+```
+signature = hex(hmac_sha256(request_body, HMAC_SECRET))
+```
+
+### Example Implementation
+
+**JavaScript/Node.js:**
+```javascript
+const crypto = require('crypto');
+
+function generateSignature(body, secret) {
+  const hmac = crypto.createHmac('sha256', secret);
+  hmac.update(JSON.stringify(body));
+  return hmac.digest('hex');
+}
+
+const body = {
+  stream_id: "my-stream",
+  webhook_urls: ["https://example.com/webhook"]
+};
+
+const signature = generateSignature(body, process.env.HMAC_SECRET);
+// Use signature in LT-SIGNATURE header
+```
+
+**Python:**
+```python
+import hmac
+import hashlib
+import json
+
+def generate_signature(body, secret):
+    body_str = json.dumps(body, separators=(',', ':'))
+    signature = hmac.new(
+        secret.encode('utf-8'),
+        body_str.encode('utf-8'),
+        hashlib.sha256
+    ).hexdigest()
+    return signature
+
+body = {
+    "stream_id": "my-stream",
+    "webhook_urls": ["https://example.com/webhook"]
+}
+
+signature = generate_signature(body, os.getenv('HMAC_SECRET'))
+# Use signature in LT-SIGNATURE header
+```
+
+**Go:**
+```go
+import (
+    "crypto/hmac"
+    "crypto/sha256"
+    "encoding/hex"
+    "encoding/json"
+)
+
+func generateSignature(body interface{}, secret string) (string, error) {
+    bodyBytes, err := json.Marshal(body)
+    if err != nil {
+        return "", err
+    }
+    
+    h := hmac.New(sha256.New, []byte(secret))
+    h.Write(bodyBytes)
+    return hex.EncodeToString(h.Sum(nil)), nil
+}
+```
+
+**cURL Example:**
+```bash
+# First, generate the signature (requires a script or manual calculation)
+BODY='{"stream_id":"my-stream"}'
+SECRET="your-hmac-secret"
+SIGNATURE=$(echo -n "$BODY" | openssl dgst -sha256 -hmac "$SECRET" | cut -d' ' -f2)
+
+curl -X POST https://your-server.com/api/start-stream \
+  -H "Content-Type: application/json" \
+  -H "LT-SIGNATURE: $SIGNATURE" \
+  -d "$BODY"
+```
+
+### Important Notes
+
+- **Body Format**: The signature must be computed on the exact JSON string that will be sent (whitespace matters)
+- **Content-Type**: Always use `application/json`
+- **Missing Header**: Requests without `LT-SIGNATURE` return `400 Bad Request`
+- **Invalid Signature**: Requests with invalid signatures return `403 Forbidden`
+- **GET Requests**: Even GET requests (like `/api/status`) require a signed body
+
+### Security Best Practices
+
+1. **Store Secrets Securely**: Never commit `HMAC_SECRET` to version control
+2. **Use Environment Variables**: Load secrets from environment variables or secret management systems
+3. **Rotate Secrets**: Periodically rotate your `HMAC_SECRET` and update all clients
+4. **HTTPS Only**: Always use HTTPS in production to protect secrets in transit
+5. **Rate Limiting**: Consider implementing rate limiting at the reverse proxy level
+
+## Stream Key Authentication (JWT)
+
+When you start a stream, Livetran generates a JWT-based stream key that your encoder must use to connect via SRT.
+
+### Stream Key Format
+
+The stream key is formatted as:
+```
+mode=publish,rid={stream_id},token={jwt_token}
+```
+
+Where:
+- `mode=publish`: Indicates this is a publishing connection
+- `rid={stream_id}`: The resource ID (must match the stream_id)
+- `token={jwt_token}`: The JWT token containing stream authentication
+
+### JWT Token Structure
+
+The JWT token contains:
+- **Claims**:
+  - `stream_id`: The stream identifier (must match `rid`)
+  - `exp`: Expiration timestamp (2 hours from generation)
+- **Algorithm**: HS256 (HMAC-SHA256)
+- **Secret**: Uses `JWT_SECRET` environment variable
+
+### Generating Stream Keys
+
+Stream keys are automatically generated when you call `/api/start-stream`. The key is included in the SRT URL returned via webhook:
+
+```
+srt://your-server-ip:12345?streamid=mode=publish,rid=my-stream,token=eyJhbGc...
+```
+
+### Using Stream Keys in OBS
+
+1. **Settings → Stream**
+2. **Service**: Custom
+3. **Server**: `srt://your-server-ip:12345`
+4. **Stream Key**: `mode=publish,rid=my-stream,token=eyJhbGc...` (the full streamid value)
+
+### Stream Key Validation
+
+When an encoder connects, Livetran:
+
+1. Parses the streamid parameter
+2. Extracts `rid` and `token`
+3. Verifies `rid` matches the expected `stream_id`
+4. Validates the JWT token:
+   - Checks signature using `JWT_SECRET`
+   - Verifies expiration (`exp` claim)
+   - Confirms `stream_id` claim matches `rid`
+5. Accepts or rejects the connection
+
+### Token Expiration
+
+- **Default Expiration**: 2 hours from generation
+- **Expired Tokens**: Rejected with `REJ_BADSECRET`
+- **Renewal**: Start a new stream to get a fresh token
+
+### Security Considerations
+
+- **Time-Limited**: Tokens expire after 2 hours, limiting exposure window
+- **Stream-Specific**: Each token is tied to a specific `stream_id`
+- **Cryptographically Secure**: Uses HMAC-SHA256 for signature verification
+- **One-Time Use**: While tokens can be reused during their validity period, starting a new stream generates a new token
+
+## Environment Variables
+
+Both authentication mechanisms require environment variables:
+
+```bash
+# API Request Signing
+HMAC_SECRET=your-secret-key-here-min-32-chars
+
+# Stream Key Generation
+JWT_SECRET=your-jwt-secret-here-min-32-chars
+```
+
+### Generating Secure Secrets
+
+Use cryptographically secure random generators:
+
+**OpenSSL:**
+```bash
+openssl rand -hex 32
+```
+
+**Node.js:**
+```javascript
+crypto.randomBytes(32).toString('hex')
+```
+
+**Python:**
+```python
+import secrets
+secrets.token_hex(32)
+```
+
+**Go:**
+```go
+import "crypto/rand"
+import "encoding/hex"
+
+b := make([]byte, 32)
+rand.Read(b)
+secret := hex.EncodeToString(b)
+```
+
+## Troubleshooting
+
+### "Missing Header for Verification!"
+- **Cause**: `LT-SIGNATURE` header not included
+- **Solution**: Add the header with a valid signature
+
+### "Invalid Request"
+- **Cause**: Signature doesn't match request body
+- **Solution**: Verify you're signing the exact JSON body being sent
+
+### "REJ_BADSECRET" (SRT Connection Rejected)
+- **Cause**: Invalid or expired stream key
+- **Solution**: 
+  - Verify the stream key format is correct
+  - Check if the token has expired (2-hour limit)
+  - Ensure `stream_id` matches the `rid` in the stream key
+  - Verify `JWT_SECRET` matches between generation and validation
+
+### "Token expired"
+- **Cause**: JWT token has passed its expiration time
+- **Solution**: Start a new stream to get a fresh token
+
+## Testing Authentication
+
+You can test HMAC signing using the helper script in `docs/helpers/hmac-gen.js`:
+
+```bash
+node docs/helpers/hmac-gen.js '{"stream_id":"test"}' your-secret
+```
+
+This will output the signature you can use in the `LT-SIGNATURE` header. 

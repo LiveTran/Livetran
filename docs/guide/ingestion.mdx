@@ -1,24 +1,278 @@
 ---
-title: "Getting the Stream"
-description: "How Livetran handles your incoming video."
+title: "Stream Ingestion"
+description: "Complete guide to SRT stream ingestion and connection handling."
 ---
 
-## The Journey of Your Stream
+Livetran uses the SRT (Secure Reliable Transport) protocol for ingesting live video streams. SRT provides low-latency, reliable streaming even over unstable networks, making it ideal for live broadcasting.
 
-So, you've hit the "Go Live" button in OBS. What happens next? Let's follow your stream as it makes its way into Livetran.
+## SRT Protocol Overview
 
-### Listening for SRT
+SRT is an open-source transport protocol that:
+- **Reduces Latency**: Typically 1-3 seconds end-to-end
+- **Handles Packet Loss**: Automatic retransmission and error recovery
+- **Works Over Unreliable Networks**: Designed for internet streaming
+- **Secure**: Optional encryption support
 
-I'm using the excellent `go-srt` library to listen for your SRT stream. When you create a new stream through the API, I fire up a new listener on a unique port and generate that special stream key we talked about.
+Livetran accepts MPEG-TS streams over SRT, which is the standard format for broadcast encoders like OBS Studio.
 
-<Callout intent="info">
-  **The TaskManager: The Brains of the Operation**
+## Connection Flow
 
-  Behind the scenes, there's a `TaskManager` that keeps track of everything. It's a simple in-memory store that holds all the info about your active streams. When you start or stop a stream, the `TaskManager` is the one that's pulling the strings and sending out webhooks to keep you in the loop.
-</Callout>
+### 1. Stream Initialization
 
-### Handing Off to FFmpeg
+When you call `/api/start-stream`:
 
-Once your stream is happily flowing in, I hand it off to the real MVP: FFmpeg. This is where your raw stream gets turned into the HLS format that's perfect for the web. I've configured it to be super fast, so your viewers will see what's happening almost instantly.
+1. **Port Allocation**: Livetran finds an available port (random selection)
+2. **SRT Listener Creation**: Starts listening on the allocated port
+3. **Stream Key Generation**: Creates a JWT-based stream key (2-hour expiration)
+4. **Status Update**: Stream status changes to `READY`
+5. **Webhook Notification**: Sends SRT URL via webhook
 
-FFmpeg creates the `.m3u8` playlist and all the little `.ts` video chunks that make up your stream. 
+### 2. Encoder Connection
+
+Your encoder (OBS, FFmpeg, etc.) connects using the SRT URL:
+
+```
+srt://your-server-ip:12345?streamid=mode=publish,rid=stream-id,token=jwt-token
+```
+
+**Connection Process:**
+1. Encoder initiates SRT handshake
+2. Livetran validates stream key (JWT verification)
+3. If valid: Connection accepted
+4. If invalid: Connection rejected with `REJ_BADSECRET`
+5. Stream data starts flowing
+
+### 3. Stream Processing
+
+Once connected:
+1. **SRT Connection**: Receives MPEG-TS packets over SRT
+2. **FFmpeg Process**: Pipes stream data to FFmpeg stdin
+3. **Transcoding**: FFmpeg converts to HLS format
+4. **File Output**: Writes segments to `output/{stream_id}/`
+5. **Upload**: File watcher uploads to R2
+
+## Configuring OBS Studio
+
+OBS Studio is the most common encoder for Livetran. Here's how to configure it:
+
+### Step 1: Get SRT URL
+
+After starting a stream, you'll receive a webhook with the SRT URL:
+```
+srt://192.168.1.100:54321?streamid=mode=publish,rid=my-stream,token=eyJhbGc...
+```
+
+### Step 2: Configure OBS
+
+1. **Open OBS Settings**:
+   - Go to `Settings → Stream`
+
+2. **Configure Service**:
+   - **Service**: Custom
+   - **Server**: Extract the server part: `srt://192.168.1.100:54321`
+   - **Stream Key**: Extract the streamid: `mode=publish,rid=my-stream,token=eyJhbGc...`
+
+3. **Advanced Settings** (optional):
+   - **Encoder**: x264 or hardware encoder (NVENC, QuickSync)
+   - **Bitrate**: Match your ABR settings (5000k for 1080p, 3000k for 720p, 1500k for 480p)
+   - **Keyframe Interval**: 2 seconds (60 frames at 30fps)
+
+### Step 3: Start Streaming
+
+Click "Start Streaming" in OBS. The connection will be established and Livetran will begin transcoding.
+
+## Connection Timeout
+
+Livetran implements a **120-second connection timeout**:
+
+- If no encoder connects within 120 seconds, the stream is marked as `STOPPED`
+- This prevents resources from being held indefinitely
+- The timeout starts when the stream status becomes `READY`
+
+To avoid timeouts:
+- Start your encoder immediately after receiving the SRT URL
+- Use the webhook to trigger encoder startup automatically
+- Monitor stream status via `/api/status`
+
+## Reconnection Handling
+
+Livetran handles encoder disconnections gracefully:
+
+### Temporary Disconnection
+
+If your encoder disconnects temporarily:
+1. FFmpeg process stops
+2. SRT listener continues waiting
+3. Encoder can reconnect using the same SRT URL
+4. New FFmpeg process starts
+5. Streaming resumes
+
+<Note>
+  Reconnections create new HLS segments. The previous segments remain in R2 but won't be part of the active playlist.
+</Note>
+
+### Permanent Disconnection
+
+If the encoder doesn't reconnect:
+- Stream remains in `READY` state
+- SRT listener continues waiting
+- You can manually stop the stream via `/api/stop-stream`
+
+## Stream Key Validation
+
+Every SRT connection is validated before acceptance:
+
+### Validation Process
+
+1. **Parse streamid**: Extracts `mode`, `rid`, and `token`
+2. **Verify mode**: Must be `publish`
+3. **Check rid**: Must match the `stream_id` from the start request
+4. **Validate JWT**:
+   - Signature verification using `JWT_SECRET`
+   - Expiration check (2-hour limit)
+   - `stream_id` claim must match `rid`
+5. **Accept or Reject**: Connection accepted if all checks pass
+
+### Rejection Reasons
+
+- **REJ_BADSECRET**: Invalid or expired stream key
+- **REJ_UNKNOWN**: Stream ID doesn't exist
+- **REJ_SYSTEM**: System error during validation
+
+## Network Configuration
+
+### Firewall Rules
+
+Ensure the following ports are accessible:
+- **HTTPS API**: Port 8080 (or your configured port)
+- **SRT Ports**: Dynamic (randomly allocated per stream)
+  - Consider opening a port range (e.g., 10000-20000)
+  - Or use port forwarding for specific streams
+
+### NAT Traversal
+
+For encoders behind NAT:
+- **Port Forwarding**: Forward SRT ports to Livetran server
+- **UPnP**: Not supported by Livetran (manual configuration required)
+- **Public IP**: Ensure Livetran server has a public IP or use a tunnel
+
+### Bandwidth Requirements
+
+**Per Stream:**
+- **Input**: 5-10 Mbps (depending on source quality)
+- **Output**: 
+  - Single profile: 3-5 Mbps
+  - ABR (3 variants): 9.5 Mbps total (5+3+1.5)
+
+**Network Considerations:**
+- Ensure sufficient upload bandwidth for R2
+- Monitor network usage during peak times
+- Consider QoS rules for SRT traffic
+
+## Troubleshooting
+
+### "Connection Timeout"
+
+**Symptoms**: Stream status remains `READY`, no connection established
+
+**Causes**:
+- Encoder not started
+- Network connectivity issues
+- Firewall blocking SRT port
+- Incorrect SRT URL
+
+**Solutions**:
+- Verify encoder is running and configured correctly
+- Check network connectivity (ping, telnet)
+- Verify firewall rules
+- Double-check SRT URL format
+
+### "REJ_BADSECRET"
+
+**Symptoms**: Encoder connection rejected
+
+**Causes**:
+- Expired stream key (2-hour limit)
+- Invalid JWT token
+- Mismatched `stream_id`
+- Incorrect `JWT_SECRET`
+
+**Solutions**:
+- Start a new stream to get a fresh key
+- Verify stream key format
+- Check `JWT_SECRET` matches between generation and validation
+- Ensure `stream_id` matches in URL and token
+
+### "FFmpeg Process Errors"
+
+**Symptoms**: Stream connects but no HLS output
+
+**Causes**:
+- Invalid input stream format
+- FFmpeg encoding errors
+- Disk space issues
+- Permission problems
+
+**Solutions**:
+- Check FFmpeg logs (stderr)
+- Verify encoder output format (MPEG-TS)
+- Ensure sufficient disk space
+- Check file permissions on `output/` directory
+
+### "Stream Stuck in READY"
+
+**Symptoms**: Stream never transitions to `STREAMING`
+
+**Causes**:
+- Encoder connected but not sending data
+- FFmpeg not processing stream
+- Network issues
+
+**Solutions**:
+- Verify encoder is actively streaming
+- Check FFmpeg process status
+- Monitor network traffic
+- Review server logs
+
+## Best Practices
+
+1. **Monitor Connection Status**: Use webhooks or polling to track stream state
+2. **Handle Reconnections**: Implement retry logic in your encoder
+3. **Network Stability**: Use wired connections for production streams
+4. **Bandwidth Planning**: Allocate sufficient bandwidth for concurrent streams
+5. **Port Management**: Consider port range allocation for multiple streams
+6. **Error Handling**: Implement proper error handling for connection failures
+7. **Testing**: Test encoder connections before going live
+
+## Advanced Configuration
+
+### Custom FFmpeg Parameters
+
+Currently, FFmpeg parameters are hardcoded. To customize:
+- Modify `internal/ingest/srt_task.go`
+- Adjust encoding settings in `ProcessStream()` function
+- Rebuild the application
+
+### Multiple Encoders
+
+Livetran supports multiple concurrent streams:
+- Each stream gets its own port and key
+- Streams are isolated and independent
+- Monitor resource usage (CPU, memory, network)
+
+### Stream Quality Settings
+
+**Recommended Settings for OBS:**
+- **Resolution**: Match your ABR variant (1080p, 720p, or 480p)
+- **Bitrate**: 5000k (1080p), 3000k (720p), 1500k (480p)
+- **Keyframe Interval**: 2 seconds
+- **Encoder Preset**: Very Fast or Faster
+- **Profile**: High or Main
+- **Tune**: zerolatency (if available)
+
+## Next Steps
+
+- Learn about [Authentication](/guide/authentication) for stream key security
+- Understand [Uploading](/guide/uploading) for R2 integration
+- Review [API Reference](/api-reference) for stream management
+- Check [Deployment](/guide/deployment) for production setup 

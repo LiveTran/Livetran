@@ -1,18 +1,417 @@
 ---
-title: "Shipping it to the Cloud"
-description: "How your stream gets to your viewers."
+title: "Cloud Storage & Delivery"
+description: "Complete guide to Cloudflare R2 integration and file uploads."
 ---
 
-## From Your Server to the World
+Livetran automatically uploads HLS segments and playlists to Cloudflare R2 as they're created, enabling scalable delivery without overloading your server. This guide covers R2 configuration, upload mechanics, and file structure.
 
-Okay, so FFmpeg is busy creating all your HLS files. Now what? We need to get them to your viewers, and that's where Cloudflare R2 comes in.
+## Cloudflare R2 Overview
 
-### The R2 Uploader
+Cloudflare R2 is an S3-compatible object storage service that:
+- **No Egress Fees**: Unlike S3, R2 doesn't charge for data transfer
+- **S3-Compatible API**: Works with existing S3 tools and libraries
+- **Global CDN**: Integrates with Cloudflare's network for fast delivery
+- **Custom Domains**: Support for custom domains with SSL
 
-I've built a little helper that's dedicated to one job: getting your video files to R2 as fast as possible. It's configured to talk directly to your R2 bucket, so you don't have to worry about the details.
+Livetran uses R2 to store HLS playlists and segments, making them accessible to viewers via public URLs.
 
-<Callout intent="info">
-  **I'm Watching You, Files...**
+## File Upload Process
 
-  The uploader uses a library called `fsnotify` to keep an eye on the output directory. The moment FFmpeg writes a new `.m3u8` or `.ts` file, the uploader sees it and immediately starts uploading it to R2. It's like having a little robot that's constantly making sure your stream is up-to-date for your viewers.
-</Callout> 
+### Automatic File Watching
+
+Livetran uses `fsnotify` to monitor the output directory for new files:
+
+1. **FFmpeg Creates File**: Writes `.m3u8` or `.ts` file to `output/{stream_id}/`
+2. **File Watcher Detects**: `fsnotify` triggers on file creation/write
+3. **Upload Initiated**: File is queued for upload to R2
+4. **Retry Logic**: Up to 3 attempts with exponential backoff
+5. **Public URL Generated**: On successful upload, public URL is constructed
+
+### Upload Timing
+
+- **Segments (`.ts`)**: Uploaded immediately on creation
+- **Playlists (`.m3u8`)**: Uploaded on both creation and write (updates)
+- **Delay**: 200ms delay to ensure file is fully written before upload
+
+### Retry Mechanism
+
+Failed uploads are retried up to 3 times:
+- **Attempt 1**: Immediate
+- **Attempt 2**: 1 second delay
+- **Attempt 3**: 2 second delay
+
+If all attempts fail, the error is logged but doesn't block stream processing.
+
+## File Structure in R2
+
+### Single-Profile Streams
+
+When `abr=false` (default):
+
+```
+bucket-name/
+  └── {stream_id}/
+      ├── {stream_id}.m3u8          # Main playlist
+      ├── {stream_id}_000.ts         # Segment 0
+      ├── {stream_id}_001.ts         # Segment 1
+      ├── {stream_id}_002.ts         # Segment 2
+      └── ...
+```
+
+**Example:**
+```
+livetran-streams/
+  └── my-stream/
+      ├── my-stream.m3u8
+      ├── my-stream_000.ts
+      ├── my-stream_001.ts
+      └── my-stream_002.ts
+```
+
+### ABR Streams
+
+When `abr=true`:
+
+```
+bucket-name/
+  └── {stream_id}/
+      ├── {stream_id}_master.m3u8    # Master playlist (references variants)
+      ├── {stream_id}_0.m3u8         # Variant 0 playlist (1080p)
+      ├── {stream_id}_1.m3u8         # Variant 1 playlist (720p)
+      ├── {stream_id}_2.m3u8         # Variant 2 playlist (480p)
+      ├── {stream_id}_0_000.ts       # Variant 0, segment 0
+      ├── {stream_id}_0_001.ts       # Variant 0, segment 1
+      ├── {stream_id}_1_000.ts       # Variant 1, segment 0
+      └── ...
+```
+
+**Example:**
+```
+livetran-streams/
+  └── my-stream/
+      ├── my-stream_master.m3u8
+      ├── my-stream_0.m3u8
+      ├── my-stream_1.m3u8
+      ├── my-stream_2.m3u8
+      ├── my-stream_0_000.ts
+      ├── my-stream_0_001.ts
+      ├── my-stream_1_000.ts
+      └── ...
+```
+
+## R2 Configuration
+
+### Environment Variables
+
+Configure R2 access via environment variables:
+
+```bash
+# Required
+R2_ACCOUNT_ID=your-cloudflare-account-id
+R2_ACCESS_KEY=your-r2-access-key-id
+R2_SECRET_KEY=your-r2-secret-access-key
+BUCKET_NAME=your-bucket-name
+CLOUDFLARE_PUBLIC_URL=https://your-domain.com/hls
+```
+
+### Setting Up R2
+
+1. **Create Bucket**:
+   - Log into Cloudflare Dashboard
+   - Navigate to R2 → Create bucket
+   - Choose a unique bucket name
+
+2. **Create API Token**:
+   - Go to R2 → Manage R2 API Tokens
+   - Click "Create API Token"
+   - Set permissions: Object Read & Write
+   - Save the Access Key ID and Secret Access Key
+
+3. **Get Account ID**:
+   - Found in the R2 dashboard URL: `https://dash.cloudflare.com/{account_id}/r2`
+   - Or in Account Settings → Account ID
+
+4. **Configure Public Access**:
+   - Option A: Use R2.dev subdomain (automatic)
+   - Option B: Set up custom domain (recommended for production)
+   - Set `CLOUDFLARE_PUBLIC_URL` to your public endpoint
+
+### Custom Domain Setup
+
+For production, use a custom domain:
+
+1. **Add Custom Domain in R2**:
+   - Go to R2 → Your Bucket → Settings
+   - Add custom domain (e.g., `streams.yourdomain.com`)
+   - Cloudflare will provision SSL automatically
+
+2. **Set Public URL**:
+   ```bash
+   CLOUDFLARE_PUBLIC_URL=https://streams.yourdomain.com
+   ```
+
+3. **CORS Configuration** (if needed for web players):
+   - Go to R2 → Your Bucket → Settings → CORS Policy
+   - Add CORS rules for your player domain
+
+## Public URL Generation
+
+Livetran constructs public URLs using the pattern:
+
+```
+{CLOUDFLARE_PUBLIC_URL}/{stream_id}/{filename}
+```
+
+**Examples:**
+
+Single-profile:
+```
+https://streams.example.com/my-stream/my-stream.m3u8
+https://streams.example.com/my-stream/my-stream_000.ts
+```
+
+ABR:
+```
+https://streams.example.com/my-stream/my-stream_master.m3u8
+https://streams.example.com/my-stream/my-stream_0.m3u8
+https://streams.example.com/my-stream/my-stream_0_000.ts
+```
+
+## Webhook Integration
+
+When the first playlist is uploaded, Livetran:
+
+1. **Generates Public URL**: Constructs URL from `CLOUDFLARE_PUBLIC_URL`
+2. **Updates Stream Status**: Changes to `STREAMING`
+3. **Sends Webhook**: Includes `StreamLink` in webhook payload
+
+**Webhook Payload:**
+```json
+{
+  "Status": "STREAMING",
+  "Update": "Live link generated : https://streams.example.com/my-stream/my-stream.m3u8",
+  "StreamLink": "https://streams.example.com/my-stream/my-stream.m3u8"
+}
+```
+
+**ABR Streams:**
+For ABR streams, the webhook is sent when the master playlist is uploaded:
+```json
+{
+  "StreamLink": "https://streams.example.com/my-stream/my-stream_master.m3u8"
+}
+```
+
+## Content Types
+
+Livetran automatically sets correct MIME types:
+
+- **`.m3u8` files**: `application/vnd.apple.mpegurl`
+- **`.ts` files**: `video/MP2T`
+
+These are set automatically during upload, ensuring proper playback in HLS players.
+
+## HLS Playlist Structure
+
+### Single-Profile Playlist
+
+```m3u8
+#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-TARGETDURATION:4
+#EXT-X-MEDIA-SEQUENCE:0
+#EXTINF:4.000,
+my-stream_000.ts
+#EXTINF:4.000,
+my-stream_001.ts
+#EXTINF:4.000,
+my-stream_002.ts
+#EXT-X-ENDLIST
+```
+
+### ABR Master Playlist
+
+```m3u8
+#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION=1920x1080
+my-stream_0.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=3000000,RESOLUTION=1280x720
+my-stream_1.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=1500000,RESOLUTION=854x480
+my-stream_2.m3u8
+```
+
+## Storage Considerations
+
+### File Lifecycle
+
+- **Active Streams**: Files are continuously created and uploaded
+- **Stopped Streams**: Files remain in R2 (not automatically deleted)
+- **Segment Retention**: FFmpeg keeps last 10 segments in playlist (configurable)
+
+### Storage Costs
+
+R2 pricing (as of 2024):
+- **Storage**: $0.015 per GB/month
+- **Class A Operations** (writes): $4.50 per million
+- **Class B Operations** (reads): $0.36 per million
+- **Egress**: Free (unlike S3)
+
+**Example Cost Calculation:**
+- 1 hour stream at 5 Mbps = ~2.25 GB
+- Storage: $0.034/month
+- Write operations: ~900 segments = $0.004
+- **Total**: ~$0.04 per hour of stored content
+
+### Cleanup Strategy
+
+Livetran doesn't automatically delete old files. Consider:
+
+1. **R2 Lifecycle Rules**: Set up automatic deletion after N days
+2. **Manual Cleanup**: Script to delete old streams
+3. **Stream Management**: Track stream end times and schedule cleanup
+
+**R2 Lifecycle Rule Example:**
+```json
+{
+  "Rules": [
+    {
+      "ID": "delete-old-streams",
+      "Status": "Enabled",
+      "Expiration": {
+        "Days": 7
+      }
+    }
+  ]
+}
+```
+
+## Performance & Optimization
+
+### Upload Speed
+
+- **Concurrent Uploads**: Multiple files upload in parallel
+- **Network Bandwidth**: Ensure sufficient upload bandwidth
+- **Retry Overhead**: Failed uploads add latency
+
+### Monitoring Uploads
+
+Check server logs for upload status:
+```
+Upload successful key=my-stream/my-stream_000.ts
+Upload failed, retrying... attempt=1 key=my-stream/my-stream_001.ts
+```
+
+### Optimization Tips
+
+1. **Geographic Proximity**: Deploy Livetran close to R2 endpoints
+2. **Network Quality**: Use stable, high-bandwidth connections
+3. **Monitor Failures**: Set up alerts for repeated upload failures
+4. **CDN Caching**: Use Cloudflare CDN for faster delivery
+
+## Troubleshooting
+
+### "Failed to initialise Uploader"
+
+**Cause**: Invalid R2 credentials or network issues
+
+**Solutions**:
+- Verify `R2_ACCOUNT_ID`, `R2_ACCESS_KEY`, and `R2_SECRET_KEY`
+- Check network connectivity to R2 endpoints
+- Verify bucket exists and is accessible
+
+### "Upload failed, retrying..."
+
+**Cause**: Network issues, rate limiting, or permissions
+
+**Solutions**:
+- Check network connectivity
+- Verify R2 API token permissions
+- Check R2 service status
+- Review server logs for specific error messages
+
+### Files Not Appearing in R2
+
+**Cause**: Upload failures or incorrect bucket name
+
+**Solutions**:
+- Verify `BUCKET_NAME` matches actual bucket
+- Check upload logs for errors
+- Verify file watcher is running (check process status)
+- Ensure output directory is writable
+
+### Public URLs Not Working
+
+**Cause**: Incorrect `CLOUDFLARE_PUBLIC_URL` or CORS issues
+
+**Solutions**:
+- Verify `CLOUDFLARE_PUBLIC_URL` matches your R2 public endpoint
+- Check CORS configuration in R2 bucket settings
+- Test URL directly in browser
+- Verify custom domain is properly configured
+
+### Playlist Not Updating
+
+**Cause**: Playlist file not being re-uploaded on updates
+
+**Solutions**:
+- Verify file watcher detects write events
+- Check that FFmpeg is updating the playlist
+- Review upload logs for playlist uploads
+- Ensure sufficient disk space
+
+## Best Practices
+
+1. **Monitor Uploads**: Set up logging/alerting for upload failures
+2. **Lifecycle Management**: Configure R2 lifecycle rules for cleanup
+3. **CDN Integration**: Use Cloudflare CDN for global delivery
+4. **Custom Domain**: Use custom domain for production (better branding)
+5. **CORS Configuration**: Set up CORS if using web-based players
+6. **Backup Strategy**: Consider backing up critical streams
+7. **Cost Monitoring**: Monitor R2 usage and costs
+8. **Network Redundancy**: Ensure reliable network connection
+
+## Integration with Video Players
+
+### HLS.js (Web)
+
+```javascript
+const video = document.getElementById('video');
+const videoSrc = 'https://streams.example.com/my-stream/my-stream.m3u8';
+
+if (Hls.isSupported()) {
+  const hls = new Hls();
+  hls.loadSource(videoSrc);
+  hls.attachMedia(video);
+} else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+  video.src = videoSrc;
+}
+```
+
+### Video.js
+
+```javascript
+const player = videojs('my-video', {
+  sources: [{
+    src: 'https://streams.example.com/my-stream/my-stream.m3u8',
+    type: 'application/x-mpegURL'
+  }]
+});
+```
+
+### Native iOS/macOS
+
+```swift
+let url = URL(string: "https://streams.example.com/my-stream/my-stream.m3u8")!
+let player = AVPlayer(url: url)
+let playerViewController = AVPlayerViewController()
+playerViewController.player = player
+```
+
+## Next Steps
+
+- Review [Deployment](/guide/deployment) for R2 setup
+- Understand [Ingestion](/guide/ingestion) for stream processing
+- Check [API Reference](/api-reference) for webhook details
+- Explore [Introduction](/guide/introduction) for architecture overview 

@@ -1,37 +1,74 @@
 ---
 title: "Welcome to Livetran!"
-description: "Your new best friend for self-hosting live streams."
+description: "Self-hosted live streaming server with SRT ingestion, HLS transcoding, and Cloudflare R2 integration."
 ---
 
-Hey there! So, you're looking to host your own live streams? You've come to the right place. I built Livetran to be a straightforward, no-nonsense live streaming server that just works. It's written in Go, so it's fast and lightweight.
+Livetran is a production-ready, self-hosted live streaming server built in Go. It provides a complete solution for ingesting live video streams via SRT, transcoding them to HLS format, and automatically uploading to Cloudflare R2 for scalable delivery.
 
-Whether you're setting up a stream for a big online event or just tinkering on a personal project, Livetran gives you the tools you need without the headache.
+Whether you're building a streaming platform, hosting live events, or creating content delivery infrastructure, Livetran gives you enterprise-grade features without the complexity.
+
+## Why Livetran?
+
+- **Fast & Lightweight**: Built with Go for high performance and low resource usage
+- **Production Ready**: Includes authentication, error handling, and observability
+- **Scalable**: Automatic uploads to Cloudflare R2 for global content delivery
+- **Developer Friendly**: Simple REST API with comprehensive webhook support
+- **Flexible**: Supports both single-profile and adaptive bitrate (ABR) streaming
 
 ## What's in the Box?
 
-I've packed Livetran with some pretty cool features to make your life easier. Here's the rundown:
-
 <CardGroup>
   <Card title="Secure SRT Ingestion" icon="shield-halved">
-    Uses SRT for solid, low-latency streaming, even if your internet connection is a bit shaky.
+    Low-latency SRT protocol support with automatic port allocation. Handles network instability gracefully with built-in error recovery.
   </Card>
-  <Card title="JWT Authentication" icon="key">
-    Keeps your streams safe and sound with JWT-based stream keys. No uninvited guests!
+  <Card title="JWT Stream Keys" icon="key">
+    Time-limited JWT-based stream keys (2-hour expiration) ensure only authorized encoders can publish. Each stream gets a unique, cryptographically secure key.
   </Card>
-  <Card title="Simple REST API" icon="code">
-    A dead-simple API to start, stop, and check on your streams.
+  <Card title="HMAC-SHA256 API Security" icon="lock">
+    All API requests are signed with HMAC-SHA256 to prevent unauthorized access. Your secret key never leaves your server.
+  </Card>
+  <Card title="RESTful API" icon="code">
+    Simple, predictable API endpoints for starting, stopping, and monitoring streams. JSON responses with clear error messages.
   </Card>
   <Card title="Real-time Webhooks" icon="webhook">
-    Get instant pings on your own servers whenever something happens with your stream.
+    Receive instant notifications on stream status changes (READY, STREAMING, STOPPED) with public playlist URLs included.
   </Card>
-  <Card title="FFmpeg Transcoding" icon="video">
-    Automatically transcodes your stream into HLS format on the fly.
+  <Card title="FFmpeg HLS Transcoding" icon="video">
+    Automatic transcoding to HLS with configurable segment duration (4s default). Supports both single-profile and multi-variant ABR ladders (1080p/720p/480p).
   </Card>
-  <Card title="Cloudflare R2 Uploads" icon="cloud-arrow-up">
-    Uploads all your video files straight to R2, so you can scale without breaking a sweat.
+  <Card title="Cloudflare R2 Integration" icon="cloud-arrow-up">
+    Automatic file watching and upload to R2 with retry logic. Files are uploaded as soon as they're created, ensuring minimal latency.
+  </Card>
+  <Card title="OpenTelemetry Metrics" icon="chart-line">
+    Optional metrics export for monitoring stream counts, status, and performance. Integrates with Prometheus, Grafana, and other observability tools.
   </Card>
 </CardGroup>
 
-## Ready to Roll?
+## Quick Start
 
-If you're ready to get your hands dirty, the **Guide** is the best place to start. We'll walk through how everything works, from the big picture down to the nitty-gritty details.
+1. **Configure Environment**: Set up your `.env` file with R2 credentials and secrets
+2. **Start the Server**: Run with Docker or locally with Go
+3. **Start a Stream**: Call the `/api/start-stream` endpoint with your stream ID
+4. **Connect Your Encoder**: Use the returned SRT URL in OBS or your streaming software
+5. **Get Your Playlist**: Receive the public HLS playlist URL via webhook
+
+For detailed setup instructions, see the [Deployment Guide](/guide/deployment).
+
+## Architecture Overview
+
+Livetran follows a simple, efficient architecture:
+
+1. **API Layer**: REST endpoints handle stream lifecycle management
+2. **Ingestion Layer**: SRT listeners accept incoming streams on dynamically allocated ports
+3. **Processing Layer**: FFmpeg transcodes streams to HLS format in real-time
+4. **Upload Layer**: File watcher automatically uploads segments to Cloudflare R2
+5. **Delivery Layer**: HLS playlists and segments served via R2 public URLs
+
+See the [Introduction Guide](/guide/introduction) for a detailed walkthrough of the architecture.
+
+## Ready to Get Started?
+
+- **New to Livetran?** Start with the [Introduction Guide](/guide/introduction) to understand how everything works
+- **Ready to Deploy?** Check out the [Deployment Guide](/guide/deployment) for production setup
+- **Need API Details?** Browse the [API Reference](/api-reference) for endpoint documentation
+- **Setting Up Authentication?** See the [Authentication Guide](/guide/authentication) for security configuration
