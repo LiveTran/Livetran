@@ -75,6 +75,8 @@ FFmpeg processes the incoming SRT stream and converts it to HLS format:
 - GOP size: 60 frames (2 seconds at 30fps)
 - Audio: 48kHz, 128kbps
 
+- NOTE: These can be easily changed by the user according to their usecase.
+
 ### 5. File Watcher & R2 Uploader (`internal/upload/r2-helper.go`)
 
 The upload system monitors the output directory and automatically uploads files to Cloudflare R2:
