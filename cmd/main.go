@@ -21,7 +21,7 @@ func init() {
 }
 
 func main() {
-	apiServer := api.NewAPIServer(":8081")
+	apiServer := api.NewAPIServer(":8080")
 	err := apiServer.StartAPIServer(tm);
 	if err != nil {
 		slog.Error("SERVER STARTUP", "error", err)
