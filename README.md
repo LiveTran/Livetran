@@ -42,7 +42,7 @@ Architecture
 ------------
 See docs guide for details and diagram:
 - `docs/guide/introduction.mdx`
-- `docs/arch.svg`
+- `docs/arch.png`
 
 Quick start
 -----------
